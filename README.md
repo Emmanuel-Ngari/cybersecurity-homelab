@@ -1,4 +1,4 @@
-🔐 Cybersecurity Homelab
+Cybersecurity Homelab
 
 A hands-on cybersecurity laboratory built to develop and demonstrate practical skills across network security, Linux, Windows, defensive security, offensive security, and security operations.
 
@@ -6,7 +6,7 @@ This repository documents my journey from building the lab infrastructure to con
 
 ---
 
-🎯 Objectives
+Objectives
 
 The primary objectives of this homelab are to:
 
@@ -22,7 +22,7 @@ The primary objectives of this homelab are to:
 
 ---
 
-🧠 Learning Methodology
+Learning Methodology
 
 My cybersecurity learning process follows:
 
@@ -32,7 +32,7 @@ I use this methodology to turn theoretical knowledge into practical, demonstrabl
 
 ---
 
-🏗️ Lab Architecture
+Lab Architecture
 
 The lab consists of three virtual machines connected through an isolated laboratory network.
 
@@ -58,13 +58,13 @@ The lab consists of three virtual machines connected through an isolated laborat
         Kali Linux      Windows 11    Ubuntu Server
        Attack Machine    Endpoint       Linux Server
 
-🌐 Network Design
+Network Design
 
 Network| Purpose| Address Range
 NAT| Internet connectivity, package updates, and software installation| "10.0.2.0/24"
 LAB-NET| Isolated VM-to-VM communication and security testing| "192.168.56.0/24"
 
-🖥️ Lab IP Addresses
+Lab IP Addresses
 
 System| Role| LAB-NET IP
 Kali Linux| Offensive Security| "192.168.56.10"
@@ -75,9 +75,9 @@ Ubuntu Server| Linux Server| "192.168.56.30"
 
 ---
 
-💻 Virtual Machines
+Virtual Machines
 
-⚔️ Kali Linux
+Kali Linux
 
 Role: Offensive Security / Penetration Testing
 
@@ -95,7 +95,7 @@ Planned activities include:
 
 ---
 
-🪟 Windows 11 Enterprise
+Windows 11 Enterprise
 
 Role: Windows Endpoint / Defensive Security
 
@@ -113,7 +113,7 @@ Planned activities include:
 
 ---
 
-🐧 Ubuntu Server
+Ubuntu Server
 
 Role: Linux Server / Infrastructure
 
@@ -131,7 +131,7 @@ Planned activities include:
 
 ---
 
-🌐 Networking
+Networking
 
 Each virtual machine uses two network interfaces.
 
@@ -158,7 +158,7 @@ The "LAB-NET" environment is isolated and intended only for authorized laborator
 
 ---
 
-🧪 Labs & Experiments
+Labs & Experiments
 
 This section will grow as I progress through my cybersecurity training.
 
@@ -172,7 +172,7 @@ This section will grow as I progress through my cybersecurity training.
 - [ ] Network troubleshooting
 - [ ] Packet analysis
 
-🐧 Linux Security
+Linux Security
 
 - [ ] Linux users and permissions
 - [ ] SSH security
@@ -180,7 +180,7 @@ This section will grow as I progress through my cybersecurity training.
 - [ ] Log analysis
 - [ ] Server hardening
 
-🪟 Windows Security
+Windows Security
 
 - [ ] Windows users and privileges
 - [ ] PowerShell
@@ -189,7 +189,7 @@ This section will grow as I progress through my cybersecurity training.
 - [ ] Windows security hardening
 - [ ] Endpoint monitoring
 
-🛡️ Blue Team / SOC
+Blue Team / SOC
 
 - [ ] Log collection
 - [ ] Security monitoring
@@ -198,7 +198,7 @@ This section will grow as I progress through my cybersecurity training.
 - [ ] Incident response
 - [ ] SIEM fundamentals
 
-⚔️ Offensive Security
+Offensive Security
 
 - [ ] Reconnaissance
 - [ ] Network scanning
@@ -211,21 +211,21 @@ This section will grow as I progress through my cybersecurity training.
 
 ---
 
-🛠️ Tools & Technologies
+Tools & Technologies
 
 Tools will be added as they are learned and used in the laboratory.
 
-Category| Tools / Technologies
-Virtualization| VirtualBox
-Operating Systems| Kali Linux, Ubuntu Server, Windows 11 Enterprise
-Version Control| Git, GitHub
-Network Security| Nmap, Wireshark
-Windows Security| PowerShell, Windows Security Tools
-Linux Security| Linux CLI, SSH, Firewall Tools
+- Category| Tools / Technologies
+- Virtualization| VirtualBox
+- Operating Systems| Kali Linux, Ubuntu Server, Windows 11 Enterprise
+- Version Control| Git, GitHub
+- Network Security| Nmap, Wireshark
+- Windows Security| PowerShell, Windows Security Tools
+- Linux Security| Linux CLI, SSH, Firewall Tools
 
 ---
 
-🔧 Troubleshooting & Lessons Learned
+Troubleshooting & Lessons Learned
 
 Cybersecurity is not only about successful attacks or configurations.
 
@@ -243,7 +243,7 @@ This repository also documents:
 
 ---
 
-📸 Evidence
+Evidence
 
 Screenshots, network diagrams, command outputs, configurations, and other relevant evidence will be added throughout the project.
 
@@ -260,7 +260,7 @@ will never be committed to this repository.
 
 ---
 
-📚 Documentation Structure
+Documentation Structure
 
 cybersecurity-homelab/
 │
@@ -298,7 +298,7 @@ cybersecurity-homelab/
 
 ---
 
-🚀 Project Status
+Project Status
 
 Status: 🟢 Active Development
 
@@ -311,16 +311,16 @@ New systems, security controls, experiments, and documentation will be added ove
 📈 Learning Progress
 
 Area| Status
-Cybersecurity Fundamentals| ✅ Completed
-Networking Fundamentals| 🔄 In Progress
-Linux Administration| 🔄 In Progress
-Windows Administration| 🔄 In Progress
-Network Security| 🔄 In Progress
-Blue Team / SOC| 🔄 In Progress
-Incident Response| 🔄 In Progress
-Offensive Security| 🔄 In Progress
-Penetration Testing| 🔄 In Progress
-Advanced Security Operations| ⏳ Planned
+- Cybersecurity Fundamentals| ✅ Completed
+- Networking Fundamentals| 🔄 In Progress
+- Linux Administration| 🔄 In Progress
+- Windows Administration| 🔄 In Progress
+- Network Security| 🔄 In Progress
+- Blue Team / SOC| 🔄 In Progress
+- Incident Response| 🔄 In Progress
+- Offensive Security| 🔄 In Progress
+- Penetration Testing| 🔄 In Progress
+- Advanced Security Operations| ⏳ Planned
 
 ---
 
