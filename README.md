@@ -338,7 +338,8 @@ Emmanuel Ngari
 
 Cybersecurity | Network Security | Blue Team | Red Team
 
-GitHub: "@Emmanuel-Ngari" (https://github.com/Emmanuel-Ngari)
+- GitHub: "@Emmanuel-Ngari" (https://github.com/Emmanuel-Ngari)
+- **LinkedIn: @emmanuel-ngari**
 
 ---
 
