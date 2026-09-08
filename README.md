@@ -261,42 +261,67 @@ Sensitive information such as passwords, private keys, tokens, credentials, and 
 
 ---
 
-📚 Documentation Structure
+## 📚 Documentation Structure
 
+``text
 cybersecurity-homelab/
 │
-├── README.md
+├── 📄 README.md
+├── 📄 CHANGELOG.md
 │
-├── architecture/
-│   ├── network-diagram.png
-│   ├── lab-architecture.md
-│   └── virtualbox-networking.md
+├── 📁 architecture/
+│   ├── 📄 lab-architecture.md
+│   ├── 📄 virtualbox-networking.md
+│   └── 🖼️ network-diagram.png
 │
-├── virtual-machines/
-│   ├── kali.md
-│   ├── windows.md
-│   └── ubuntu.md
+├── 📁 virtual-machines/
+│   ├── 📄 kali.md
+│   ├── 📄 windows.md
+│   └── 📄 ubuntu.md
 │
-├── networking/
-│   ├── addressing.md
-│   ├── connectivity-tests.md
-│   └── troubleshooting.md
+├── 📁 networking/
+│   ├── 📄 addressing.md
+│   ├── 📄 connectivity-tests.md
+│   └── 📄 troubleshooting.md
 │
-├── linux/
-│   └── ubuntu-server.md
+├── 📁 linux/
+│   └── 📄 ubuntu-server.md
 │
-├── windows/
-│   └── windows-security.md
+├── 📁 windows/
+│   └── 📄 windows-security.md
 │
-├── offensive-security/
+├── 📁 offensive-security/
+│   ├── 📁 reconnaissance/
+│   ├── 📁 enumeration/
+│   ├── 📁 vulnerability-assessment/
+│   ├── 📁 exploitation/
+│   └── 📁 penetration-testing/
 │
-├── blue-team/
+├── 📁 blue-team/
+│   ├── 📁 monitoring/
+│   ├── 📁 threat-detection/
+│   ├── 📁 log-analysis/
+│   └── 📁 endpoint-security/
 │
-├── incident-response/
+├── 📁 incident-response/
+│   ├── 📁 investigation/
+│   ├── 📁 containment/
+│   ├── 📁 eradication/
+│   └── 📁 recovery/
 │
-├── screenshots/
+├── 📁 screenshots/
+│   ├── 📁 architecture/
+│   ├── 📁 networking/
+│   ├── 📁 linux/
+│   ├── 📁 windows/
+│   ├── 📁 offensive-security/
+│   └── 📁 blue-team/
 │
-└── CHANGELOG.md
+└── 📁 reports/
+    ├── 📁 penetration-testing/
+    ├── 📁 incident-response/
+    └── 📁 security-assessments/
+
 
 ---
 
