@@ -254,9 +254,7 @@ Sensitive information such as:
 - API tokens
 - Credentials
 - Personal information
-- Other secrets
-
-will never be committed to this repository.
+- Other secrets will never be committed to this repository.
 
 ---
 
