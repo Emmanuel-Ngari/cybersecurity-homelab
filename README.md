@@ -236,7 +236,7 @@ Tools will be added as they are learned and used in the lab.
 
 ---
 
-🔧 Troubleshooting & Lessons Learned
+## Troubleshooting & Lessons Learned
 
 Cybersecurity is not only about successful attacks or configurations.
 
@@ -253,7 +253,7 @@ Failures are treated as part of the learning process.
 
 ---
 
-📸 Evidence
+## Evidence
 
 Screenshots, network diagrams, command outputs, configurations, and other relevant evidence will be added throughout the project.
 
@@ -262,8 +262,6 @@ Sensitive information such as passwords, private keys, tokens, credentials, and 
 ---
 
 ## 📚 Documentation Structure
-
-``text
 cybersecurity-homelab/
 │
 ├── 📄 README.md
@@ -325,7 +323,7 @@ cybersecurity-homelab/
 
 ---
 
-🚀 Project Status
+## Project Status
 
 Status: 🟢 Active Development
 
@@ -335,7 +333,7 @@ New systems, security controls, experiments, and documentation will be added ove
 
 ---
 
-📈 Learning Progress
+## Learning Progress
 
 Learning Area| Status
 Cybersecurity Fundamentals| ✅
@@ -357,7 +355,7 @@ Legend:
 
 ---
 
-⚠️ Disclaimer
+## Disclaimer
 
 All security testing documented in this repository is performed in an authorized laboratory environment that I control.
 
