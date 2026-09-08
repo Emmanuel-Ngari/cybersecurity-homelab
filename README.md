@@ -1,4 +1,5 @@
-# cybersecurity-homelab
+🔐 Cybersecurity Homelab
+
 A hands-on cybersecurity laboratory built to develop and demonstrate practical skills across network security, Linux, Windows, defensive security, offensive security, and security operations.
 
 This repository documents my journey from building the lab infrastructure to conducting security experiments, troubleshooting failures, testing defenses, and documenting the results.
@@ -23,25 +24,11 @@ The primary objectives of this homelab are to:
 
 🧠 Learning Methodology
 
-My cybersecurity learning process:
+My cybersecurity learning process follows:
 
-Learn
-↓
-Build
-↓
-Break
-↓
-Troubleshoot
-↓
-Fix
-↓
-Test
-↓
-Document
-↓
-Repeat
+«Learn → Build → Break → Troubleshoot → Fix → Test → Document → Repeat»
 
-I use this methodology to turn theoretical knowledge into practical, demonstrable skills.
+I use this methodology to turn theoretical knowledge into practical, demonstrable cybersecurity skills.
 
 ---
 
@@ -56,7 +43,8 @@ The lab consists of three virtual machines connected through an isolated laborat
                             │
              ┌──────────────┼──────────────┐
              │              │              │
-         Kali Linux     Windows 11    Ubuntu Server
+        Kali Linux      Windows 11    Ubuntu Server
+        NAT: DHCP       NAT: DHCP       NAT: DHCP
              │              │              │
              └──────────────┼──────────────┘
                             │
@@ -67,20 +55,23 @@ The lab consists of three virtual machines connected through an isolated laborat
              │              │              │
         192.168.56.10  192.168.56.20  192.168.56.30
              │              │              │
-          Kali Linux     Windows 11    Ubuntu Server
+        Kali Linux      Windows 11    Ubuntu Server
+       Attack Machine    Endpoint       Linux Server
 
-Network Design
+🌐 Network Design
 
 Network| Purpose| Address Range
-NAT| Internet access| "10.0.2.0/24"
-LAB-NET| Isolated lab traffic| "192.168.56.0/24"
+NAT| Internet connectivity, package updates, and software installation| "10.0.2.0/24"
+LAB-NET| Isolated VM-to-VM communication and security testing| "192.168.56.0/24"
 
-Lab IP Addresses
+🖥️ Lab IP Addresses
 
 System| Role| LAB-NET IP
 Kali Linux| Offensive Security| "192.168.56.10"
-Windows 11| Windows Endpoint| "192.168.56.20"
+Windows 11 Enterprise| Windows Endpoint| "192.168.56.20"
 Ubuntu Server| Linux Server| "192.168.56.30"
+
+«Note: NAT addresses may be dynamically assigned by VirtualBox. The LAB-NET addresses are the static laboratory addresses used for VM-to-VM communication.»
 
 ---
 
@@ -99,7 +90,8 @@ Planned activities include:
 - Password security testing
 - Exploitation in the isolated lab
 - Post-exploitation fundamentals
-- Reporting and documentation
+- Penetration testing methodology
+- Security reporting and documentation
 
 ---
 
@@ -114,7 +106,7 @@ Planned activities include:
 - Windows networking
 - Windows Firewall
 - User and privilege management
-- Event logs
+- Event Logs
 - Security monitoring
 - Endpoint hardening
 - Attack detection
@@ -128,8 +120,8 @@ Role: Linux Server / Infrastructure
 Planned activities include:
 
 - Linux administration
+- Network configuration
 - SSH
-- Networking
 - User and permission management
 - Service management
 - Firewall configuration
@@ -141,7 +133,7 @@ Planned activities include:
 
 🌐 Networking
 
-The lab uses two network interfaces on each virtual machine.
+Each virtual machine uses two network interfaces.
 
 NAT
 
@@ -162,7 +154,7 @@ Used for:
 - Attack simulations
 - Defensive security experiments
 
-The LAB-NET environment is isolated and intended only for authorized laboratory activities.
+The "LAB-NET" environment is isolated and intended only for authorized laboratory activities.
 
 ---
 
@@ -221,22 +213,19 @@ This section will grow as I progress through my cybersecurity training.
 
 🛠️ Tools & Technologies
 
-Tools will be added as they are learned and used in the lab.
+Tools will be added as they are learned and used in the laboratory.
 
-- VirtualBox
-- Kali Linux
-- Ubuntu Server
-- Windows 11
-- Git & GitHub
-- Nmap
-- Wireshark
-- PowerShell
-- Linux CLI
-- Windows Security Tools
+Category| Tools / Technologies
+Virtualization| VirtualBox
+Operating Systems| Kali Linux, Ubuntu Server, Windows 11 Enterprise
+Version Control| Git, GitHub
+Network Security| Nmap, Wireshark
+Windows Security| PowerShell, Windows Security Tools
+Linux Security| Linux CLI, SSH, Firewall Tools
 
 ---
 
-## Troubleshooting & Lessons Learned
+🔧 Troubleshooting & Lessons Learned
 
 Cybersecurity is not only about successful attacks or configurations.
 
@@ -248,82 +237,68 @@ This repository also documents:
 - Troubleshooting processes
 - Solutions
 - Security lessons learned
+- Improvements made to the laboratory
 
-Failures are treated as part of the learning process.
+«Failures are treated as part of the learning process.»
 
 ---
 
-## Evidence
+📸 Evidence
 
 Screenshots, network diagrams, command outputs, configurations, and other relevant evidence will be added throughout the project.
 
-Sensitive information such as passwords, private keys, tokens, credentials, and other secrets will never be committed to this repository.
+Sensitive information such as:
+
+- Passwords
+- Private keys
+- API tokens
+- Credentials
+- Personal information
+- Other secrets
+
+will never be committed to this repository.
 
 ---
 
-## 📚 Documentation Structure
+📚 Documentation Structure
+
 cybersecurity-homelab/
 │
-├── 📄 README.md
-├── 📄 CHANGELOG.md
+├── README.md
+├── CHANGELOG.md
 │
-├── 📁 architecture/
-│   ├── 📄 lab-architecture.md
-│   ├── 📄 virtualbox-networking.md
-│   └── 🖼️ network-diagram.png
+├── architecture/
+│   ├── network-diagram.png
+│   ├── lab-architecture.md
+│   └── virtualbox-networking.md
 │
-├── 📁 virtual-machines/
-│   ├── 📄 kali.md
-│   ├── 📄 windows.md
-│   └── 📄 ubuntu.md
+├── virtual-machines/
+│   ├── kali.md
+│   ├── windows.md
+│   └── ubuntu.md
 │
-├── 📁 networking/
-│   ├── 📄 addressing.md
-│   ├── 📄 connectivity-tests.md
-│   └── 📄 troubleshooting.md
+├── networking/
+│   ├── addressing.md
+│   ├── connectivity-tests.md
+│   └── troubleshooting.md
 │
-├── 📁 linux/
-│   └── 📄 ubuntu-server.md
+├── linux/
+│   └── ubuntu-server.md
 │
-├── 📁 windows/
-│   └── 📄 windows-security.md
+├── windows/
+│   └── windows-security.md
 │
-├── 📁 offensive-security/
-│   ├── 📁 reconnaissance/
-│   ├── 📁 enumeration/
-│   ├── 📁 vulnerability-assessment/
-│   ├── 📁 exploitation/
-│   └── 📁 penetration-testing/
+├── offensive-security/
 │
-├── 📁 blue-team/
-│   ├── 📁 monitoring/
-│   ├── 📁 threat-detection/
-│   ├── 📁 log-analysis/
-│   └── 📁 endpoint-security/
+├── blue-team/
 │
-├── 📁 incident-response/
-│   ├── 📁 investigation/
-│   ├── 📁 containment/
-│   ├── 📁 eradication/
-│   └── 📁 recovery/
+├── incident-response/
 │
-├── 📁 screenshots/
-│   ├── 📁 architecture/
-│   ├── 📁 networking/
-│   ├── 📁 linux/
-│   ├── 📁 windows/
-│   ├── 📁 offensive-security/
-│   └── 📁 blue-team/
-│
-└── 📁 reports/
-    ├── 📁 penetration-testing/
-    ├── 📁 incident-response/
-    └── 📁 security-assessments/
-
+└── screenshots/
 
 ---
 
-## Project Status
+🚀 Project Status
 
 Status: 🟢 Active Development
 
@@ -333,33 +308,29 @@ New systems, security controls, experiments, and documentation will be added ove
 
 ---
 
-## Learning Progress
+📈 Learning Progress
 
-Learning Area| Status
-Cybersecurity Fundamentals| ✅
-Networking Fundamentals| 🔄
-Linux Administration| 🔄
-Windows Administration| 🔄
-Network Security| 🔄
-Blue Team / SOC| 🔄
-Incident Response| 🔄
-Offensive Security| 🔄
-Penetration Testing| 🔄
-Advanced Security Operations| ⏳
-
-Legend:
-
-- ✅ Completed
-- 🔄 In Progress
-- ⏳ Upcoming
+Area| Status
+Cybersecurity Fundamentals| ✅ Completed
+Networking Fundamentals| 🔄 In Progress
+Linux Administration| 🔄 In Progress
+Windows Administration| 🔄 In Progress
+Network Security| 🔄 In Progress
+Blue Team / SOC| 🔄 In Progress
+Incident Response| 🔄 In Progress
+Offensive Security| 🔄 In Progress
+Penetration Testing| 🔄 In Progress
+Advanced Security Operations| ⏳ Planned
 
 ---
 
-## Disclaimer
+⚠️ Disclaimer
 
 All security testing documented in this repository is performed in an authorized laboratory environment that I control.
 
 No unauthorized systems, networks, accounts, or organizations are targeted.
+
+The offensive security activities documented here are intended strictly for education, defensive security development, and authorized testing.
 
 ---
 
@@ -369,13 +340,10 @@ Emmanuel Ngari
 
 Cybersecurity | Network Security | Blue Team | Red Team
 
-GitHub: @Emmanuel-Ngari
-LinkedIn: @emmanuel-ngari
+GitHub: "@Emmanuel-Ngari" (https://github.com/Emmanuel-Ngari)
 
 ---
 
-📝 Initial Commit
+📌 Repository Philosophy
 
-This repository begins with a professional Git workflow focused on documenting practical cybersecurity development rather than simply storing files.
-
-Future commits will document the construction, configuration, testing, troubleshooting, and evolution of the cybersecurity homelab.
+«Build it. Understand it. Break it. Defend it. Document it.»
