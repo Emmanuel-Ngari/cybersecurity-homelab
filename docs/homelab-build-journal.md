@@ -3169,3 +3169,733 @@ This represents the current stable recovery point before continuing with additio
 **Learn → Build → Break → Troubleshoot → Fix → Test → Document → Repeat**
 
 This journal will continue to grow as the cybersecurity homelab evolves into a complete offensive and defensive cyber range.
+
+---
+
+# 101. Host Storage Emergency and Snapshot Sprawl
+
+During the Sysmon deployment phase, VirtualBox generated another host-storage error.
+
+VirtualBox reported:
+
+`VERR_DISK_FULL`
+
+and:
+
+`BLKCACHE_IOERR`
+
+The physical Windows host was checked using:
+
+    Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | Select-Object DeviceID,@{N='FreeGB';E={[math]::Round($_.FreeSpace/1GB,2)}},@{N='SizeGB';E={[math]::Round($_.Size/1GB,2)}}
+
+The host showed approximately:
+
+`0.1 GB free`
+
+on a roughly:
+
+`456.56 GB`
+
+C: drive.
+
+The virtual machines were not resumed until sufficient host storage was recovered.
+
+This reinforced an important virtualization lesson:
+
+A virtual machine may have free space inside its guest operating system while the physical host has no space available for the virtual disk to grow.
+
+---
+
+# 102. Locating the Actual VirtualBox VM Directory
+
+The initial search of:
+
+`C:\Users\USER\VirtualBox VMs`
+
+returned no relevant large files.
+
+VirtualBox was queried directly for its configured machine directory.
+
+Command:
+
+    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" list systemproperties | Select-String "Default machine folder"
+
+Result:
+
+`C:\Users\USER\Desktop\CyberLab\VMs`
+
+This demonstrated the importance of verifying the hypervisor configuration instead of assuming the default storage path.
+
+---
+
+# 103. VirtualBox Disk Investigation
+
+Large files inside the actual VM directory were inspected.
+
+A PowerShell recursive scan identified multiple large VirtualBox snapshot disks.
+
+Examples included snapshot VDI files approximately:
+
+- 38.69 GB
+- 31.07 GB
+- 29.46 GB
+- 23.74 GB
+- 13.46 GB
+- 9.63 GB
+- 7.47 GB
+- 7.33 GB
+- 6.13 GB
+
+Several `.sav` snapshot-memory files were also present.
+
+This confirmed that the host-storage issue was partly caused by long VirtualBox snapshot chains.
+
+No `.vdi`, `.sav`, `.vbox`, or snapshot files were manually deleted.
+
+---
+
+# 104. Emergency Non-VM Storage Recovery
+
+Before attempting snapshot consolidation, additional space was recovered outside the active VM directories.
+
+Large non-VM files were inspected.
+
+An old FIFA installation/download consumed significant space and was removed because it was no longer required.
+
+Additional duplicate Ubuntu installation media were also removed.
+
+The host recovered from approximately:
+
+`0 GB free`
+
+to tens of gigabytes of available storage.
+
+This created enough working space for safe VirtualBox snapshot consolidation.
+
+---
+
+# 105. Safe VM Shutdown Before Snapshot Consolidation
+
+Virtual machines that had been paused because of the disk-full condition were resumed one at a time and shut down cleanly.
+
+Linux systems were shut down using:
+
+    sudo poweroff
+
+Windows was shut down normally from the operating system.
+
+The objective was to reach:
+
+`Powered Off`
+
+state before managing snapshot chains.
+
+This reduced the risk of filesystem corruption and avoided creating additional saved-memory snapshot files.
+
+---
+
+# 106. Windows Snapshot Consolidation
+
+The Windows snapshot tree was inspected using:
+
+    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-WIN-01" list --details
+
+The chain contained several snapshots from the original NAT/LAB-NET architecture.
+
+Obsolete snapshots included:
+
+- `SNAP-00-WIN11-CLEAN-VM`
+- `SNAP-01-WIN11-LAB-NET`
+- `SNAP-02-WIN-NETWORK-BASELINE`
+- `Windows - CORPNET Policy Verified Pre Final Cutover`
+
+These were superseded by later verified states.
+
+Snapshots were deleted through VirtualBox one at a time using:
+
+    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-WIN-01" delete "<SNAPSHOT-UUID>"
+
+VirtualBox merged the differencing disks safely.
+
+Important retained milestones included:
+
+- `CORPNET Final Cutover Verified`
+- `Windows - Wazuh Agent Active`
+- `Windows - Pre Sysmon Deployment`
+
+Host free space increased significantly during the cleanup.
+
+---
+
+# 107. Ubuntu Snapshot Consolidation
+
+The Ubuntu snapshot tree was inspected using:
+
+    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-UBUNTU-01" list --details
+
+Older snapshots from the original LAB-NET and migration stages were consolidated.
+
+Removed obsolete milestones included:
+
+- `Ubuntu - Base Installation + Network Configuration`
+- `Ubuntu - Pre OPNsense SERVERNET Migration`
+- `Ubuntu - SERVERNET Policy Verified Pre Final Cutover`
+
+Important retained milestones included:
+
+- `Ubuntu - SERVERNET Final Cutover Verified`
+- `Ubuntu - Pre Wazuh Agent`
+
+The snapshot cleanup was performed one snapshot at a time with disk-space checks between operations.
+
+---
+
+# 108. Kali Snapshot Consolidation
+
+The Kali snapshot tree was inspected using:
+
+    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-KALI-01" list --details
+
+Old NAT/LAB-NET snapshots included:
+
+- `SNAP-00-FRESH-KALI`
+- `SNAP-01-KALI-BASELINE`
+- `SNAP-02-KALI-NETWORK-BASELINE`
+- `Kali - Pre OPNsense REDNET Migration`
+- `Kali - REDNET Policy Verified Pre Final Cutover`
+
+These snapshots were consolidated through VirtualBox.
+
+The meaningful current milestone retained was:
+
+`REDNET Final Cutover Verified`
+
+---
+
+# 109. SIEM Snapshot Consolidation
+
+The SIEM snapshot tree included:
+
+- `LAB-SIEM-01 - Base OS + SOCNET Verified`
+- `LAB-SIEM-01 - Wazuh 4.14.7 Operational`
+- `LAB-SIEM-01 - Wazuh + Windows Agent Verified`
+- `SIEM - Pre Indexer Timeout Recovery`
+- `SIEM - Wazuh Windows Ubuntu Agents Verified`
+
+The temporary recovery checkpoint:
+
+`SIEM - Pre Indexer Timeout Recovery`
+
+was removed after the indexer recovery had been fully verified.
+
+The later known-good state:
+
+`SIEM - Wazuh Windows Ubuntu Agents Verified`
+
+was retained.
+
+---
+
+# 110. OPNsense Snapshot Consolidation
+
+The OPNsense snapshot tree contained several milestones from the original three-zone architecture.
+
+Older snapshots included:
+
+- `OPNsense - Base Install + Security Zones`
+- `OPNsense - Security Policy Baseline`
+- `Three Zone Policy Verified`
+- `Full Three Zone Cutover Verified`
+- `OPNsense - Explicit Three Zone Policy Verified`
+
+These were superseded by later architecture milestones and were consolidated.
+
+Important retained checkpoints included:
+
+- `OPNsense - Pre SOC-NET Expansion`
+- `OPNsense - SOCNET Interface + Policy Baseline`
+
+This preserves both:
+
+1. A known-good three-zone architecture
+2. The current SOCNET-enabled architecture
+
+---
+
+# 111. Snapshot Cleanup Result
+
+After consolidating obsolete snapshots across:
+
+- LAB-WIN-01
+- LAB-UBUNTU-01
+- LAB-KALI-01
+- LAB-SIEM-01
+- LAB-FW-01
+
+the physical host recovered to approximately:
+
+`100 GB free`
+
+Further cleanup of old non-lab installation media increased available storage to approximately:
+
+`113.95 GB free`
+
+This was a major improvement compared with the earlier:
+
+`0 GB free`
+
+condition.
+
+---
+
+# 112. Revised Snapshot Policy
+
+The following snapshot policy was adopted after the storage incident.
+
+## Keep Only Meaningful Milestones
+
+Examples:
+
+- Final network cutover
+- SIEM verified
+- Agent integration verified
+- Pre-major security deployment
+- Post-major security deployment
+
+## Avoid Snapshot Chains for Every Small Change
+
+Snapshots should not replace normal documentation.
+
+## Prefer Powered-Off Snapshots
+
+Powered-off snapshots avoid storing several gigabytes of VM memory in `.sav` files.
+
+## Consolidate Obsolete Checkpoints
+
+Once a newer configuration has been tested and verified, older temporary checkpoints should be reviewed.
+
+## Monitor Host Storage
+
+The physical host should maintain substantial free space.
+
+A practical warning threshold for this lab is approximately:
+
+`75–90 GB free`
+
+If available storage approaches this range while new snapshots or SIEM data are being added, storage should be reviewed before continuing.
+
+## Never Manually Delete VirtualBox Snapshot Files
+
+Files such as:
+
+- `.vdi`
+- `.sav`
+- `.vbox`
+- files under `Snapshots`
+
+must not be manually removed.
+
+Snapshot deletion and consolidation must be performed through VirtualBox.
+
+---
+
+# 113. Old Lab Media Cleanup
+
+The physical host also contained installation media from an older unused SOC laboratory.
+
+The old directory contained approximately:
+
+- Ubuntu 24.04.3 Desktop ISO — 5.91 GB
+- Windows 10 Enterprise Evaluation ISO — 5.17 GB
+
+These files were not used by the current CyberLab architecture.
+
+After confirming that the current lab instead uses Windows 11 Enterprise and Ubuntu Server 26.04.1 media under the CyberLab directory, the unused older ISOs were removed.
+
+This recovered approximately:
+
+`11 GB`
+
+of additional host storage.
+
+---
+
+# 114. Windows Host Storage Analysis
+
+Windows Storage Settings showed the major C: drive categories.
+
+Approximate values included:
+
+- Desktop — about 199 GB
+- Installed apps — about 68 GB
+- System & reserved — about 63 GB
+- Documents — about 11 GB
+- Temporary files — about 11 GB
+
+A significant part of Desktop storage belongs to:
+
+`C:\Users\USER\Desktop\CyberLab`
+
+and therefore should not be cleaned blindly.
+
+---
+
+# 115. System and Reserved Storage
+
+Windows reported approximately:
+
+## System files
+
+`23.2 GB`
+
+## Reserved storage
+
+`6.50 GB`
+
+## Virtual memory
+
+`27.0 GB`
+
+## Hibernation file
+
+`6.24 GB`
+
+Because the physical host has approximately 16 GB RAM and regularly runs multiple virtual machines, the 27 GB virtual-memory allocation was left unchanged.
+
+The hibernation file was also retained because Windows Hibernate is regularly used.
+
+This demonstrated that not all large system files should be removed simply to recover disk capacity.
+
+---
+
+# 116. Sysmon Deployment Begins
+
+After the host-storage problem was corrected, the Windows telemetry phase resumed.
+
+A powered-off snapshot already existed:
+
+`Windows - Pre Sysmon Deployment`
+
+Sysmon was downloaded from Microsoft Sysinternals using:
+
+    Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
+
+The archive was extracted to:
+
+`C:\Tools\Sysmon`
+
+using:
+
+    New-Item -ItemType Directory -Path "C:\Tools\Sysmon" -Force | Out-Null; Expand-Archive -Path "$env:TEMP\Sysmon.zip" -DestinationPath "C:\Tools\Sysmon" -Force
+
+Files included:
+
+- `Sysmon.exe`
+- `Sysmon64.exe`
+- `Sysmon64a.exe`
+- `Eula.txt`
+
+---
+
+# 117. Sysmon Authenticity Verification
+
+Before execution, the Sysmon64 binary was digitally verified.
+
+Command:
+
+    Get-AuthenticodeSignature "C:\Tools\Sysmon\Sysmon64.exe" | Select-Object Status,@{N='Signer';E={$_.SignerCertificate.Subject}}
+
+Result:
+
+`Valid`
+
+Signer:
+
+`Microsoft Windows Publisher`
+
+Publisher:
+
+`Microsoft Corporation`
+
+This confirmed the binary had a valid Microsoft signature.
+
+---
+
+# 118. Sysmon Configuration
+
+A detection-focused Sysmon configuration was downloaded from the SwiftOnSecurity project.
+
+Command:
+
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "C:\Tools\Sysmon\sysmonconfig.xml"
+
+The file was inspected:
+
+    Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -TotalCount 20
+
+The XML was then parsed:
+
+    [xml]$cfg = Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -Raw; $cfg.Sysmon.schemaversion
+
+Result:
+
+`4.50`
+
+This confirmed that the downloaded configuration was valid XML.
+
+---
+
+# 119. Sysmon Installation
+
+Sysmon was installed using:
+
+    & "C:\Tools\Sysmon\Sysmon64.exe" -accepteula -i "C:\Tools\Sysmon\sysmonconfig.xml"
+
+Installation output confirmed:
+
+- Sysmon version 15.22
+- Configuration validated
+- Sysmon64 installed
+- SysmonDrv installed
+- SysmonDrv started
+- Sysmon64 started
+
+The service was checked:
+
+    Get-Service Sysmon64
+
+Result:
+
+`Running`
+
+---
+
+# 120. Sysmon Event Verification
+
+The Sysmon Operational event channel was queried:
+
+    Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5 | Select-Object TimeCreated,Id,ProviderName
+
+Recent events included:
+
+- Event ID 1
+- Event ID 4
+- Event ID 16
+
+Provider:
+
+`Microsoft-Windows-Sysmon`
+
+This confirmed that Sysmon was generating telemetry locally.
+
+---
+
+# 121. Wazuh Sysmon Integration
+
+The Wazuh configuration was confirmed at:
+
+`C:\Program Files (x86)\ossec-agent\ossec.conf`
+
+A backup was created:
+
+    Copy-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" "C:\Program Files (x86)\ossec-agent\ossec.conf.pre-sysmon.bak" -Force
+
+No existing Sysmon collection configuration was found.
+
+The following block was added inside `<ossec_config>`:
+
+    <!-- Sysmon event collection -->
+    <localfile>
+      <location>Microsoft-Windows-Sysmon/Operational</location>
+      <log_format>eventchannel</log_format>
+    </localfile>
+
+The modified XML was validated.
+
+Result:
+
+`XML VALID`
+
+The Wazuh service was restarted:
+
+    Restart-Service WazuhSvc
+
+Service verification:
+
+    Get-Service WazuhSvc
+
+Result:
+
+`Running`
+
+---
+
+# 122. Wazuh Sysmon Channel Confirmation
+
+The Wazuh agent log was searched:
+
+    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.log" -Pattern "Sysmon|Microsoft-Windows-Sysmon|eventchannel" | Select-Object -Last 20
+
+The log confirmed:
+
+`Analyzing event log: 'Microsoft-Windows-Sysmon/Operational'.`
+
+This proved that the Wazuh agent was actively monitoring the Sysmon event channel.
+
+---
+
+# 123. End-to-End Sysmon Test
+
+A harmless test process was generated:
+
+    Start-Process cmd.exe -ArgumentList '/c echo SYSMON_WAZUH_TEST_20260913 > C:\Windows\Temp\sysmon-wazuh-test.txt' -Wait
+
+The test marker was:
+
+`SYSMON_WAZUH_TEST_20260913`
+
+The local Sysmon Operational log was searched for Event ID 1.
+
+The event was successfully found.
+
+This confirmed:
+
+`Test Activity -> Sysmon`
+
+---
+
+# 124. SIEM Verification
+
+The Wazuh server was then checked.
+
+Sysmon events were searched using:
+
+    sudo grep -R "Microsoft-Windows-Sysmon" /var/ossec/logs/alerts/ 2>/dev/null | tail -n 10
+
+Wazuh alert data contained:
+
+`Microsoft-Windows-Sysmon`
+
+and:
+
+`Microsoft-Windows-Sysmon/Operational`
+
+The generated test command was visible inside the received event data.
+
+This verified the complete telemetry chain:
+
+`Windows Activity`
+
+↓
+
+`Sysmon`
+
+↓
+
+`Windows Event Log`
+
+↓
+
+`Wazuh Agent`
+
+↓
+
+`CORPNET`
+
+↓
+
+`OPNsense`
+
+↓
+
+`SOCNET`
+
+↓
+
+`Wazuh Manager`
+
+↓
+
+`Wazuh Alerts`
+
+---
+
+# 125. Sysmon Verified Snapshot
+
+After the integration was fully tested, LAB-WIN-01 was shut down normally.
+
+A powered-off snapshot was created:
+
+`Windows - Sysmon Wazuh Integration Verified`
+
+This snapshot represents the known-good Windows endpoint state after Sysmon and Wazuh integration.
+
+---
+
+# 126. Current Windows Defensive Monitoring Status
+
+LAB-WIN-01 currently has:
+
+- Wazuh Agent
+- Microsoft Sysmon
+- Sysmon Operational event logging
+- Wazuh Sysmon event collection
+- Cross-zone SIEM forwarding
+- Verified process-creation telemetry
+- Verified SIEM ingestion
+
+The Windows endpoint is now significantly more useful for future blue-team and attack-detection exercises.
+
+---
+
+# 127. Current Defensive Telemetry Path
+
+The current Windows monitoring architecture is:
+
+    LAB-WIN-01
+    10.10.20.20
+         |
+       Sysmon
+         |
+    Windows Event Logs
+         |
+      Wazuh Agent
+         |
+       CORPNET
+         |
+      OPNsense
+         |
+       SOCNET
+         |
+    LAB-SIEM-01
+    10.10.40.10
+         |
+    Wazuh Manager
+         |
+    Wazuh Indexer
+         |
+    Wazuh Dashboard
+
+This telemetry path has been tested end-to-end.
+
+---
+
+# 128. Next Defensive Security Objectives
+
+The next defensive improvements may include:
+
+1. Advanced Windows Audit Policy
+2. PowerShell Script Block Logging
+3. PowerShell Module Logging
+4. PowerShell Transcription
+5. Windows authentication monitoring
+6. Linux auditd deployment
+7. OPNsense log forwarding
+8. Suricata IDS
+9. Custom Wazuh detection rules
+10. MITRE ATT&CK mapping
+11. Controlled attack simulations
+12. SOC alert investigation
+13. Incident-response exercises
+
+The lab has now progressed beyond basic endpoint monitoring and is developing into a proper detection and response environment.
