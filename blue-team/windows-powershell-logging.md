@@ -625,3 +625,485 @@ Future Windows telemetry improvements may include:
 - Controlled PowerShell attack simulations
 - Detection engineering
 - SOC investigation exercises
+
+---
+
+# 32. PowerShell Module Logging Deployment
+
+## 32.1 Objective
+
+After successfully deploying and verifying PowerShell Script Block Logging, the next Windows telemetry improvement was PowerShell Module Logging.
+
+PowerShell Module Logging provides additional visibility into PowerShell command and module execution.
+
+The primary event used during this phase was:
+
+`Event ID 4103`
+
+The objective was to verify the complete telemetry path:
+
+`PowerShell Module Activity -> Event ID 4103 -> PowerShell Operational Log -> Wazuh Agent -> CORPNET -> OPNsense -> SOCNET -> Wazuh Manager`
+
+---
+
+## 32.2 Initial Module Logging State
+
+The existing Module Logging configuration was checked on `LAB-WIN-01`.
+
+Result:
+
+`PowerShell Module Logging: Not configured`
+
+This established the pre-deployment baseline.
+
+---
+
+## 32.3 Enabling Module Logging
+
+The following registry path was created:
+
+`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging`
+
+The `ModuleNames` subkey was also created:
+
+`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames`
+
+Module Logging was enabled with:
+
+`EnableModuleLogging = 1`
+
+A wildcard module configuration was created:
+
+`* = *`
+
+This configured Module Logging for all PowerShell modules.
+
+---
+
+## 32.4 Configuration Verification
+
+The Module Logging policy was queried after configuration.
+
+Result:
+
+`EnableModuleLogging = 1`
+
+The `ModuleNames` configuration was also queried.
+
+Result:
+
+`* : *`
+
+This confirmed that Module Logging was enabled and configured to monitor all modules.
+
+---
+
+## 32.5 Local Event Generation Test
+
+A fresh Windows PowerShell process was launched with:
+
+`powershell.exe -NoProfile -Command "Get-Process | Select-Object -First 3"`
+
+The PowerShell Operational event log was queried for Event ID 4103.
+
+Events were successfully generated, including:
+
+`CommandInvocation(Get-Process)`
+
+This provided initial confirmation that Module Logging was functioning locally.
+
+---
+
+## 32.6 Initial Wazuh Verification Attempt
+
+The Wazuh raw archive was initially searched for Event ID 4103.
+
+No matching output was observed.
+
+The Wazuh alerts log was also checked, but no 4103 alert was generated.
+
+This did not prove telemetry failure because Wazuh alert logs contain rule-triggering events rather than every event received by the manager.
+
+Further investigation was therefore performed.
+
+---
+
+## 32.7 Wazuh Agent Troubleshooting
+
+The Windows Wazuh agent log was inspected using PowerShell.
+
+Historical entries showed that on September 14 the agent had temporarily experienced connectivity problems to:
+
+`10.10.40.10:1514/tcp`
+
+Historical messages included:
+
+`Unable to connect`
+
+and:
+
+`Process locked due to agent is offline`
+
+A historical message also indicated that the Windows Event Log service had temporarily been unavailable.
+
+However, current September 15 logs showed:
+
+`Analyzing event log: 'Microsoft-Windows-PowerShell/Operational'.`
+
+This confirmed that the Wazuh agent was currently monitoring the required PowerShell event channel.
+
+---
+
+## 32.8 Current Wazuh Connection Verification
+
+The Wazuh agent connection state was checked.
+
+The current agent log showed:
+
+`Connected to the server ([10.10.40.10]:1514/tcp).`
+
+This confirmed that:
+
+- LAB-WIN-01 could reach LAB-SIEM-01
+- TCP 1514 connectivity was operational
+- OPNsense policy allowed the required Wazuh traffic
+- The Wazuh agent was connected to the manager
+
+The earlier connectivity errors were therefore historical rather than an active failure.
+
+---
+
+## 32.9 Fresh 4103 Test
+
+A new PowerShell process was used to generate fresh Module Logging telemetry:
+
+`powershell.exe -NoProfile -Command "Get-Service WazuhSvc | Select-Object Name,Status"`
+
+Result:
+
+`WazuhSvc Running`
+
+The local PowerShell Operational log was queried immediately afterward.
+
+Multiple Event ID 4103 records were observed, including:
+
+`CommandInvocation(Get-Service)`
+
+This definitively confirmed local Module Logging operation.
+
+---
+
+## 32.10 Controlled Raw Archive Verification
+
+Because the 4103 events did not necessarily trigger Wazuh alert rules, raw JSON archiving was temporarily enabled again for controlled troubleshooting.
+
+The Wazuh Manager configuration was changed temporarily from:
+
+`<logall_json>no</logall_json>`
+
+to:
+
+`<logall_json>yes</logall_json>`
+
+The configuration was verified before restarting Wazuh Manager.
+
+After the restart:
+
+`sudo systemctl is-active wazuh-manager`
+
+returned:
+
+`active`
+
+A new 4103 test event was then generated from LAB-WIN-01.
+
+---
+
+## 32.11 Case-Sensitive Search Troubleshooting
+
+An initial Linux `grep` search appeared to return no PowerShell events.
+
+The issue was traced to capitalization in the search string.
+
+Linux `grep` performs case-sensitive matching by default.
+
+For example:
+
+`PowerShell`
+
+and:
+
+`Powershell`
+
+are treated as different strings.
+
+After correcting the capitalization, Wazuh raw archive data containing PowerShell Module Logging events was successfully located.
+
+This provided an important Linux command-line lesson:
+
+`grep -F` performs fixed-string, case-sensitive matching.
+
+For case-insensitive searches, the `-i` option can be used, for example:
+
+`grep -Fi 'powershell' file`
+
+---
+
+## 32.12 Definitive Event ID 4103 Verification
+
+The Wazuh raw archive contained events with:
+
+- Agent: `LAB-WIN-01`
+- Agent IP: `10.10.20.20`
+- Provider: `Microsoft-Windows-PowerShell`
+- Channel: `Microsoft-Windows-PowerShell/Operational`
+- Event ID: `4103`
+- Location: `EventChannel`
+
+Module Logging information included PowerShell command invocation data such as:
+
+`CommandInvocation(Set-StrictMode)`
+
+and other PowerShell module activity.
+
+This conclusively proved that Event ID 4103 telemetry was reaching Wazuh.
+
+---
+
+## 32.13 Verified Module Logging Telemetry Path
+
+The final verified path is:
+
+`LAB-WIN-01`
+
+↓
+
+`PowerShell Module Logging`
+
+↓
+
+`Event ID 4103`
+
+↓
+
+`Microsoft-Windows-PowerShell/Operational`
+
+↓
+
+`Wazuh Agent`
+
+↓
+
+`CORPNET - 10.10.20.0/24`
+
+↓
+
+`OPNsense`
+
+↓
+
+`SOCNET - 10.10.40.0/24`
+
+↓
+
+`LAB-SIEM-01`
+
+↓
+
+`Wazuh Manager`
+
+↓
+
+`Raw Event Archive`
+
+Status:
+
+`VERIFIED`
+
+---
+
+## 32.14 Raw Archive Cleanup
+
+Raw JSON archiving was enabled only for controlled verification.
+
+After successful 4103 verification, the configuration was restored to:
+
+`<logall>no</logall>`
+
+`<logall_json>no</logall_json>`
+
+Wazuh Manager was restarted.
+
+Final health check:
+
+`sudo systemctl is-active wazuh-manager`
+
+Result:
+
+`active`
+
+Raw JSON collection therefore remains disabled during normal lab operation to prevent unnecessary SIEM disk growth.
+
+---
+
+## 32.15 Post-Deployment Snapshot
+
+LAB-WIN-01 was shut down normally after successful verification.
+
+A powered-off VirtualBox snapshot was created:
+
+`Windows - PowerShell 4103 Module Logging Verified`
+
+This provides a known-good rollback point containing:
+
+- Wazuh Agent
+- Sysmon
+- PowerShell Script Block Logging
+- Event ID 4104 collection
+- PowerShell Module Logging
+- Event ID 4103 collection
+- Verified Wazuh telemetry
+
+---
+
+# 33. Current PowerShell Security Telemetry
+
+LAB-WIN-01 currently provides two complementary PowerShell telemetry sources.
+
+### Script Block Logging
+
+Event ID:
+
+`4104`
+
+Status:
+
+`Enabled and end-to-end verified`
+
+Purpose:
+
+Provides visibility into PowerShell script-block content.
+
+### Module Logging
+
+Event ID:
+
+`4103`
+
+Status:
+
+`Enabled and end-to-end verified`
+
+Purpose:
+
+Provides visibility into PowerShell module and command invocation activity.
+
+Together, these provide significantly stronger PowerShell visibility than the default Windows logging configuration.
+
+---
+
+# 34. Troubleshooting Lessons
+
+This phase reinforced several operational principles.
+
+### Historical Errors Must Be Distinguished From Current Errors
+
+Old Wazuh connectivity errors were present in the agent log, but current entries confirmed that the agent had recovered.
+
+Timestamps must therefore be considered before diagnosing an active failure.
+
+### Verify Every Layer Independently
+
+The investigation checked:
+
+`Command execution -> Local event -> Event channel -> Wazuh collector -> Agent connection -> Network path -> SIEM raw event`
+
+This prevented incorrect conclusions about where the problem existed.
+
+### Linux Is Case-Sensitive
+
+Search strings must use the correct capitalization unless case-insensitive matching is explicitly requested.
+
+### Alerts and Events Are Different
+
+An event can reach Wazuh successfully without generating an alert.
+
+Raw-event verification can therefore be valuable during controlled troubleshooting.
+
+### Configuration Changes Require Verification
+
+The workflow used throughout this phase was:
+
+`Backup -> Change -> Verify -> Restart -> Verify Service -> Generate Test -> Verify Telemetry -> Restore Temporary Settings`
+
+---
+
+# 35. Module Logging Milestone Status
+
+PowerShell Module Logging:
+
+`ENABLED`
+
+All-module wildcard:
+
+`CONFIGURED`
+
+Event ID 4103 generated locally:
+
+`VERIFIED`
+
+PowerShell Operational channel:
+
+`MONITORED`
+
+Wazuh Agent connection:
+
+`VERIFIED`
+
+Event ID 4103 received by Wazuh:
+
+`VERIFIED`
+
+Raw archive troubleshooting:
+
+`COMPLETED`
+
+Raw JSON archiving returned to disabled:
+
+`VERIFIED`
+
+Wazuh Manager:
+
+`ACTIVE`
+
+Powered-off snapshot:
+
+`Windows - PowerShell 4103 Module Logging Verified`
+
+Overall status:
+
+`POWERShell MODULE LOGGING END-TO-END VERIFIED`
+
+---
+
+# 36. Next Phase
+
+The next Windows telemetry phase is:
+
+`PowerShell Transcription`
+
+After PowerShell telemetry is completed, planned Windows monitoring improvements include:
+
+- Process Creation auditing
+- Command-line auditing
+- Advanced Windows Audit Policy
+- Windows Defender Operational telemetry
+- Windows Firewall telemetry
+- Authentication monitoring
+- Account-management monitoring
+- Scheduled-task monitoring
+- Service-install monitoring
+
+The long-term objective remains:
+
+`Generate -> Collect -> Forward -> Detect -> Investigate -> Respond -> Document`
