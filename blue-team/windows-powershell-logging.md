@@ -1691,3 +1691,301 @@ Verified capabilities now include:
 - End-to-end telemetry across CORPNET, OPNsense, SOCNET, and the Wazuh manager
 
 The next phase will introduce Wazuh Dashboard-based SOC investigation so that the same telemetry can be analyzed using both command-line and graphical SIEM workflows.
+
+---
+
+## PowerShell Transcription and Wazuh File Integrity Monitoring
+
+### Objective
+
+PowerShell Transcription was enabled on `LAB-WIN-01` to provide an additional auditing layer for PowerShell activity.
+
+Because PowerShell transcript files may contain sensitive command output, transcript contents are not forwarded directly into the SIEM. Instead, Wazuh File Integrity Monitoring (FIM) monitors the transcript directory for file creation, modification, and deletion.
+
+This provides integrity visibility while reducing unnecessary exposure of transcript contents.
+
+---
+
+### PowerShell Transcription Configuration
+
+PowerShell Transcription was enabled system-wide through:
+
+`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription`
+
+Configured values:
+
+- `EnableTranscripting = 1`
+- `EnableInvocationHeader = 1`
+- `OutputDirectory = C:\ProgramData\CyberLab\PowerShellTranscripts`
+
+Transcript directory:
+
+`C:\ProgramData\CyberLab\PowerShellTranscripts`
+
+A controlled PowerShell session using the marker:
+
+`CYBERLAB_TRANSCRIPTION_TEST_20260917`
+
+successfully generated a transcript.
+
+The transcript contained information including:
+
+- Username
+- Run-as identity
+- PowerShell host information
+- Process ID
+- PowerShell version
+- Commands executed
+- Command output
+
+SYSTEM-owned background transcripts were also observed.
+
+---
+
+### Transcript Directory Permissions
+
+The transcript directory ACL was inspected.
+
+Observed principals included:
+
+- `SYSTEM` — Full Control
+- `Administrators` — Full Control
+- `CREATOR OWNER` — special inherited permissions
+- `Users` — Read/Execute and required file creation permissions
+
+The ACL was intentionally left unchanged because PowerShell sessions require the ability to create transcript files.
+
+---
+
+### Wazuh FIM Configuration
+
+Before modifying the Wazuh agent configuration, a backup was created:
+
+`C:\Program Files (x86)\ossec-agent\ossec.conf.pre-transcription.bak`
+
+The PowerShell transcript directory was added to Wazuh Syscheck for real-time File Integrity Monitoring:
+
+`<directories realtime="yes">C:\ProgramData\CyberLab\PowerShellTranscripts</directories>`
+
+The Wazuh configuration was validated successfully and the Wazuh agent service was restarted.
+
+The agent returned to a running state.
+
+---
+
+### Initial FIM Verification
+
+A controlled test file:
+
+`WAZUH_FIM_TEST_20260917.txt`
+
+was created and deleted inside the monitored directory.
+
+Wazuh successfully generated:
+
+- Rule `554` — File added to the system
+- Rule `553` — File deleted
+
+Both events were detected using real-time monitoring.
+
+A genuine PowerShell transcript containing:
+
+`CYBERLAB_REAL_TRANSCRIPT_FIM_TEST_20260917`
+
+also generated a FIM modification event:
+
+- Rule `550`
+- `Integrity checksum changed.`
+- `syscheck.mode = realtime`
+
+This verified that Wazuh was monitoring genuine PowerShell transcript activity rather than only manually created test files.
+
+---
+
+### CLI Investigation
+
+Structured JSON filtering with `jq` was used on the Wazuh manager to investigate FIM events.
+
+Example:
+
+`sudo jq -c 'select(.agent.name=="LAB-WIN-01" and .syscheck.path != null)' /var/ossec/logs/alerts/alerts.json | tail -1`
+
+This provided structured fields including:
+
+- Timestamp
+- Rule ID
+- Rule description
+- Agent
+- File path
+- FIM mode
+- FIM event type
+
+An important investigation lesson was also observed: searching `alerts.json` using simple text matching can match an analyst's own commands because administrative activity is itself recorded by the SIEM.
+
+Structured JSON filtering is therefore preferable when precise event selection is required.
+
+---
+
+## Wazuh Indexing and Dashboard Verification
+
+A controlled test was performed on September 22, 2026 to verify the complete path from Windows FIM detection to searchable Wazuh Dashboard data.
+
+Test file:
+
+`C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt`
+
+The file was created on `LAB-WIN-01`.
+
+The event was verified in:
+
+`/var/ossec/logs/alerts/alerts.json`
+
+and subsequently located in the Wazuh File Integrity Monitoring Dashboard.
+
+The indexed document was stored in:
+
+`wazuh-alerts-4.x-2026.09.22`
+
+Observed fields included:
+
+- `agent.name = LAB-WIN-01`
+- `agent.ip = 10.10.20.20`
+- `agent.id = 001`
+- `manager.name = lab-siem-01`
+- `decoder.name = syscheck_new_entry`
+- `location = syscheck`
+- `syscheck.mode = realtime`
+- `syscheck.event = added`
+- `rule.id = 554`
+- `rule.level = 5`
+- `rule.description = File added to the system.`
+
+Wazuh also recorded forensic metadata including:
+
+- MD5
+- SHA-1
+- SHA-256
+- File size
+- Modification time
+- Owner
+- Windows SID
+- File attributes
+- Windows permissions
+
+This confirmed that the event was not only generated by the Wazuh manager but successfully shipped, indexed, and made searchable through the Wazuh Dashboard.
+
+---
+
+## Full FIM Lifecycle Test
+
+The same test file was then used to verify the complete File Integrity Monitoring lifecycle.
+
+### ADD
+
+Creation of:
+
+`FIM_INDEX_TEST_20260922.txt`
+
+generated:
+
+- `syscheck.event = added`
+- Rule `554`
+- `File added to the system.`
+
+### MODIFY
+
+PowerShell was used to append additional content to the file.
+
+Command:
+
+`Add-Content -Path "C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt" -Value "FIM modification test - 20260922"`
+
+Wazuh detected the change and generated:
+
+- `syscheck.event = modified`
+- Rule `550`
+- `Integrity checksum changed.`
+
+### DELETE
+
+The test file was removed with:
+
+`Remove-Item -Path "C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt"`
+
+Wazuh detected the deletion and generated:
+
+- `syscheck.event = deleted`
+- Rule `553`
+- `File deleted.`
+
+The ADD, MODIFY, and DELETE events were all confirmed through the Wazuh Dashboard.
+
+---
+
+## Verified Monitoring Pipeline
+
+The completed tests verify the following telemetry path:
+
+`PowerShell / Windows filesystem`
+
+→ `Wazuh Agent`
+
+→ `CORPNET`
+
+→ `OPNsense`
+
+→ `SOCNET`
+
+→ `Wazuh Manager`
+
+→ `Filebeat`
+
+→ `Wazuh Indexer`
+
+→ `Wazuh Dashboard`
+
+The successful Dashboard search confirmed that the complete SIEM indexing pipeline was operational.
+
+---
+
+## Security Design
+
+PowerShell monitoring in the lab now uses several complementary telemetry layers:
+
+- PowerShell Event ID `4103` — module/cmdlet activity
+- PowerShell Event ID `4104` — script block logging
+- PowerShell Transcription — command and output session records
+- Wazuh FIM — integrity monitoring of transcript files
+
+Transcript contents are retained locally rather than blindly ingested into the SIEM because transcripts can contain sensitive command output.
+
+Wazuh FIM provides centralized visibility into creation, modification, and deletion of those transcript files while minimizing unnecessary exposure of their contents.
+
+---
+
+## Result
+
+PowerShell Transcription and Wazuh real-time File Integrity Monitoring are operational on `LAB-WIN-01`.
+
+The following capabilities have been verified:
+
+- PowerShell transcript generation
+- Controlled transcript storage
+- Transcript directory permission inspection
+- Wazuh real-time directory monitoring
+- Genuine transcript modification detection
+- File creation detection
+- File modification detection
+- File deletion detection
+- CLI investigation using structured JSON
+- Manager-side alert generation
+- Filebeat-to-indexer connectivity
+- Wazuh Indexer storage
+- Dashboard search and investigation
+- Complete ADD → MODIFY → DELETE lifecycle visibility
+
+### Snapshot
+
+Verified Windows milestone snapshot:
+
+`Windows - PowerShell Transcription + Wazuh FIM Verified`
