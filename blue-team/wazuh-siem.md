@@ -453,3 +453,342 @@ Future defensive-security improvements include:
 - SOC investigation documentation
 
 The objective is to evolve the environment from basic endpoint monitoring into a complete attack, detection, investigation and response laboratory.
+
+---
+
+## Wazuh Dashboard Trusted HTTPS Configuration
+
+### Objective
+
+The Wazuh Dashboard was already configured to use HTTPS, but browsers displayed a `Not secure` warning when accessing:
+
+`https://10.10.40.10`
+
+The objective was to implement a properly trusted TLS configuration for the CyberLab environment without disabling certificate verification or bypassing browser security controls.
+
+---
+
+## Initial Certificate Investigation
+
+The existing Wazuh Dashboard certificate was inspected from the Windows browser.
+
+The certificate was valid, but its Subject Alternative Name contained:
+
+`IP Address: 127.0.0.1`
+
+The Wazuh Dashboard was accessed through:
+
+`https://10.10.40.10`
+
+Because modern browsers validate the Subject Alternative Name, the existing certificate did not correctly identify the actual Dashboard IP address.
+
+The existing certificate chain was also not trusted by the Windows endpoint.
+
+The issue therefore consisted of:
+
+1. Certificate identity mismatch
+2. Untrusted certificate authority
+
+The solution was to deploy a dedicated internal CyberLab Certificate Authority and issue a new Wazuh Dashboard server certificate containing the correct IP address.
+
+---
+
+## Existing Wazuh Dashboard TLS Configuration
+
+The Dashboard configuration was inspected at:
+
+`/etc/wazuh-dashboard/opensearch_dashboards.yml`
+
+The existing TLS configuration referenced:
+
+`/etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem`
+
+`/etc/wazuh-dashboard/certs/wazuh-dashboard.pem`
+
+`/etc/wazuh-dashboard/certs/root-ca.pem`
+
+SSL was already enabled.
+
+The original certificate directory was backed up before making changes:
+
+`/etc/wazuh-dashboard/certs.pre-tls-fix`
+
+The Dashboard configuration was also backed up:
+
+`/etc/wazuh-dashboard/opensearch_dashboards.yml.pre-cyberlab-tls`
+
+---
+
+## Snapshot Protection
+
+Before implementing the TLS changes, rollback snapshots were created.
+
+Pre-change snapshots included:
+
+`Windows - Pre Wazuh Dashboard TLS Trust`
+
+`LAB-SIEM-01 - Pre Dashboard TLS Certificate Fix`
+
+This allowed the environment to be restored if the certificate deployment caused a Dashboard service failure.
+
+---
+
+## CyberLab Root Certificate Authority
+
+A dedicated internal Certificate Authority was created for the lab.
+
+Root CA private key:
+
+`cyberlab-root-ca-key.pem`
+
+Root CA certificate:
+
+`cyberlab-root-ca.pem`
+
+The Root CA identity was configured as:
+
+- Country: NG
+- State: Rivers
+- Location: Port-Harcourt
+- Organization: CyberLab
+- Organizational Unit: Security-Operations
+- Common Name: CyberLab-Root-CA
+
+The Root CA certificate was configured with approximately 10 years of validity.
+
+Verification confirmed that the Root CA was self-signed:
+
+`Subject = CyberLab-Root-CA`
+
+`Issuer = CyberLab-Root-CA`
+
+The Root CA private key remains stored only on the SIEM system and must never be committed to GitHub or transferred to endpoints.
+
+---
+
+## Wazuh Dashboard Server Certificate
+
+A new private key was generated for the Wazuh Dashboard:
+
+`cyberlab-dashboard-key.pem`
+
+A Certificate Signing Request was created for:
+
+`CN=10.10.40.10`
+
+A certificate extension file was created containing:
+
+`subjectAltName=IP:10.10.40.10`
+
+`extendedKeyUsage=serverAuth`
+
+The CSR was then signed using the CyberLab Root CA.
+
+Generated server certificate:
+
+`cyberlab-dashboard.pem`
+
+Certificate verification confirmed:
+
+- Subject CN: `10.10.40.10`
+- Issuer: `CyberLab-Root-CA`
+- Subject Alternative Name: `IP Address:10.10.40.10`
+- Extended use: TLS server authentication
+
+The certificate and private key were also verified as a matching cryptographic pair.
+
+---
+
+## Certificate Permissions
+
+The Wazuh Dashboard certificate and private key were configured with ownership:
+
+`wazuh-dashboard:wazuh-dashboard`
+
+Restrictive permissions were applied to the certificate and key files.
+
+The new certificate and key were copied to the filenames already referenced by the Wazuh Dashboard configuration:
+
+`wazuh-dashboard.pem`
+
+`wazuh-dashboard-key.pem`
+
+This allowed the existing Dashboard configuration to remain unchanged.
+
+---
+
+## Certificate Chain
+
+The Dashboard certificate and CyberLab Root CA public certificate were combined so that the Dashboard could present the certificate chain to connecting clients.
+
+The chain contained:
+
+`CyberLab-Root-CA`
+
+→ `10.10.40.10`
+
+The CyberLab Root CA private key was not included in the certificate chain.
+
+---
+
+## Wazuh Dashboard Restart and Verification
+
+The Wazuh Dashboard service was restarted after the certificate replacement.
+
+Service verification returned:
+
+`active`
+
+The Dashboard successfully loaded using the new certificate.
+
+The browser certificate hierarchy showed:
+
+`CyberLab-Root-CA`
+
+→ `10.10.40.10`
+
+This confirmed that the Wazuh Dashboard was serving the expected CyberLab certificate chain.
+
+---
+
+## Windows Root CA Trust
+
+The public CyberLab Root CA certificate was exported from the browser as:
+
+`CyberLab-Root-CA.cer`
+
+The certificate was imported into the Windows Local Machine Trusted Root Certification Authorities store using Administrator PowerShell:
+
+`Import-Certificate -FilePath "$env:USERPROFILE\Desktop\CyberLab-Root-CA.cer" -CertStoreLocation "Cert:\LocalMachine\Root"`
+
+The import completed successfully.
+
+The imported certificate thumbprint was:
+
+`F89A05A752F54D268EBE1C13A4315F70A0B3A399`
+
+Subject:
+
+`CN=CyberLab-Root-CA`
+
+---
+
+## Final HTTPS Verification
+
+After closing and reopening the browser, the Wazuh Dashboard was accessed at:
+
+`https://10.10.40.10`
+
+The previous browser `Not secure` warning was removed.
+
+The browser successfully validated:
+
+1. The server certificate identity
+2. The certificate Subject Alternative Name
+3. The CyberLab Root CA
+4. The TLS trust chain
+
+The trusted communication path is now:
+
+`LAB-WIN-01`
+
+→ `HTTPS/TLS`
+
+→ `10.10.40.10`
+
+→ `Wazuh Dashboard`
+
+The configuration does not rely on disabling certificate validation or bypassing browser security warnings.
+
+---
+
+## Security Notes
+
+The following files are sensitive and must never be committed to GitHub:
+
+`cyberlab-root-ca-key.pem`
+
+`cyberlab-dashboard-key.pem`
+
+`wazuh-dashboard-key.pem`
+
+Any certificate-authority private key must remain protected.
+
+Public certificates such as the CyberLab Root CA certificate may be distributed to trusted lab endpoints when necessary.
+
+---
+
+## Verified Result
+
+The Wazuh Dashboard now provides trusted HTTPS access at:
+
+`https://10.10.40.10`
+
+Verified capabilities:
+
+- HTTPS enabled
+- Correct server certificate identity
+- Subject Alternative Name configured for `10.10.40.10`
+- Dedicated internal CyberLab Root CA
+- Dashboard certificate signed by CyberLab Root CA
+- Certificate/private-key match verified
+- Wazuh Dashboard service operational after certificate deployment
+- Windows trusts CyberLab Root CA
+- Browser certificate warning removed
+- Wazuh Dashboard remains accessible and operational
+- TLS validation remains enabled
+
+---
+
+## Final Snapshots
+
+After successful verification, powered-off milestone snapshots were created:
+
+`Windows - Wazuh Dashboard TLS Trusted`
+
+`LAB-SIEM-01 - Wazuh Dashboard TLS Trusted`
+
+These snapshots represent the verified trusted HTTPS state of the environment.
+
+---
+
+## Lessons Learned
+
+This exercise demonstrated the difference between:
+
+- HTTPS encryption
+- Certificate identity validation
+- Certificate trust
+- Subject Alternative Names
+- Root Certificate Authorities
+- Server certificates
+- Certificate chains
+- Private and public certificate material
+
+A service can use HTTPS while still generating browser security warnings if the certificate does not match the destination or if the issuing CA is not trusted.
+
+The correct solution is to establish a valid trust chain rather than bypass certificate validation.
+
+---
+
+## Current SIEM Security State
+
+The following major Wazuh capabilities are now operational:
+
+- Windows Wazuh agent monitoring
+- Ubuntu Wazuh agent monitoring
+- Sysmon telemetry
+- PowerShell Script Block Logging
+- PowerShell Module Logging
+- PowerShell Transcription
+- Real-time File Integrity Monitoring
+- ADD / MODIFY / DELETE FIM lifecycle verification
+- Manager-side alert verification
+- Filebeat alert shipping
+- Wazuh Indexer storage
+- Dashboard event investigation
+- Trusted HTTPS access to Wazuh Dashboard
+
+The next phase of the homelab will focus on:
+
+`SOC Investigation → Dashboard Filtering → Threat Hunting → Detection Engineering`
