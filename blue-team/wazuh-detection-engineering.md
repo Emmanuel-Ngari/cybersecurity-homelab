@@ -1,595 +1,1348 @@
-# Wazuh Detection Engineering and OPNsense Firewall Integration
+# Wazuh Detection Engineering
 
-## 1. Overview
+## Overview
 
-This phase extended the CyberLab SIEM from basic log collection into active detection engineering and network-security monitoring.
+This document records the complete evolution of detection engineering in the Cybersecurity Home Lab, from the earliest phase where security activity was observed manually through the final multi-source Wazuh detection environment.
 
-The work covered:
+Detection engineering did not exist as a formal discipline in the original lab.
 
-- Custom Wazuh detection rules
-- MITRE ATT&CK mapping
-- Detection severity tuning
-- False-positive and authorized-test suppression
-- Windows service-installation monitoring
-- Windows scheduled-task monitoring
-- Windows Firewall blocked-connection telemetry
-- OPNsense remote syslog integration
-- OPNsense/PF firewall log decoding
-- Firewall-event correlation and noise reduction
+The earliest environment focused mainly on:
 
-The goal was to move beyond simply collecting logs and begin building a SOC workflow where telemetry is converted into meaningful security detections.
+- Nmap
+- SSH
+- Hydra
+- fail2ban
+- local Windows logs
+- direct host observation
+- manual attacker/defender validation
 
----
+As the project matured, the objective changed from simply asking:
 
-## 2. Environment
+**Did the attack work?**
 
-### Wazuh SIEM
+to asking:
 
-- Hostname: `lab-siem-01`
-- IP address: `10.10.40.10`
-- Network: `SOCNET`
-- Wazuh version: `4.14.7`
+**Can the defensive side reliably detect, explain, and investigate what happened?**
 
-### Windows Endpoint
+This led to the gradual development of:
 
-- Hostname: `LAB-WIN-01`
-- IP address: `10.10.20.20`
-- Network: `CORPNET`
+- endpoint detections
+- Linux detections
+- Windows detections
+- firewall correlation
+- Suricata alert ingestion
+- web-server detections
+- decoder troubleshooting
+- log-format tuning
+- validation workflows
+- Purple Team detection testing
 
-### Kali Linux
+The final detection platform is centered on:
 
-- Hostname: `LAB-KALI-01`
-- IP address: `10.10.10.10`
-- Network: `REDNET`
+`LAB-SIEM-01`
 
-### OPNsense Firewall
+using:
 
-- Hostname: `lab-fw-01.cyberlab.internal`
-- SOCNET interface: `10.10.40.1`
-- CORPNET gateway: `10.10.20.1`
-- REDNET gateway: `10.10.10.1`
-- SERVERNET gateway: `10.10.30.1`
+`Wazuh 4.14.7`
 
 ---
 
-# Part 1 — Windows Extended Security Telemetry
+# Phase 1 — Before Formal Detection Engineering
 
-## 3. Windows Defender Operational Logging
+The earliest lab used:
 
-The Microsoft Defender Operational event channel was verified as enabled:
+`192.168.56.0/24`
 
-`Microsoft-Windows-Windows Defender/Operational`
+Primary systems included:
 
-The Wazuh Windows agent was configured to collect this channel.
+- Kali — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu — `192.168.56.30`
 
-A controlled EICAR antivirus test was used to generate Defender telemetry.
+At this stage, security validation was largely manual.
 
-Verified Defender events included:
+Examples included:
 
-- Event ID `1116` — malware/threat detected
-- Event ID `1117` — Defender action/remediation
+- scan a system with Nmap
+- attempt SSH authentication
+- trigger fail2ban
+- observe the result
+- check whether a port became filtered
 
-The events successfully reached Wazuh.
-
----
-
-## 4. Scheduled Task Monitoring
-
-The following Windows event channel was enabled:
-
-`Microsoft-Windows-TaskScheduler/Operational`
-
-Advanced Audit Policy was also enabled for:
-
-`Other Object Access Events`
-
-This allowed Windows Security events relating to scheduled tasks to be monitored.
-
-Important Security Event IDs include:
-
-- `4698` — scheduled task created
-- `4699` — scheduled task deleted
-
-A controlled scheduled task named:
-
-`\CyberLab\RuleTest`
-
-was created and deleted to verify telemetry.
-
-Wazuh built-in rule:
-
-`60228`
-
-successfully detected Event ID `4698`.
+This was useful for learning controls, but there was no central detection logic.
 
 ---
 
-## 5. Windows Service Installation Monitoring
+# Early Purple Team Pattern
 
-Advanced Audit Policy was enabled for:
+Even before Wazuh, the lab was already beginning to follow a simple Purple Team cycle.
 
-`Security System Extension`
+Example:
 
-A temporary service was created using `sc.exe` to generate service-installation telemetry.
+    Kali
+      |
+      v
+    SSH Authentication Attack
+      |
+      v
+    Ubuntu
+      |
+      v
+    fail2ban
+      |
+      v
+    Source Blocked
+      |
+      v
+    Kali Retest
 
-Observed events included:
+This created the first version of the lab's future detection philosophy:
 
-- Security Event ID `4697`
-- System Event ID `7045`
-
-Wazuh built-in rule:
-
-`61138`
-
-identified Event ID `7045` as:
-
-`New Windows Service Created`
-
-The test service was removed immediately after testing.
-
----
-
-## 6. Windows Firewall Monitoring
-
-Windows Firewall logging was enabled for:
-
-- Domain
-- Private
-- Public
-
-Both allowed and blocked traffic logging were enabled.
-
-The original text firewall log was configured at:
-
-`C:\ProgramData\CyberLab\Firewall\pfirewall.log`
-
-Although Windows correctly wrote firewall entries and the Wazuh agent opened the file, reliable forwarding of the plain-text firewall log was not achieved.
-
-Instead of relying on text-log parsing, the architecture was improved by using structured Windows Filtering Platform telemetry.
-
-The following audit category was enabled:
-
-`Filtering Platform Connection`
-
-Failure auditing was enabled so Windows generates Event ID:
-
-`5157`
-
-Event `5157` means:
-
-`The Windows Filtering Platform has blocked a connection.`
-
-The existing Wazuh Security-channel filter was modified so Event ID `5157` was no longer excluded.
-
-A controlled outbound block to:
-
-`1.1.1.1:443`
-
-was generated.
-
-Verification confirmed:
-
-- Windows generated Event ID `5157`
-- Wazuh received the event
-- Wazuh rule `60104` processed the event
-
-The final Windows Firewall monitoring path became:
-
-`Windows Firewall → Security Event 5157 → Wazuh Agent → Wazuh Manager → Alert`
-
-This structured event-channel approach was retained instead of the plain-text firewall-log approach.
+    Generate Activity
+          |
+          v
+    Observe Defensive Response
+          |
+          v
+    Verify Result
+          |
+          v
+    Improve Control
 
 ---
 
-# Part 2 — Custom Wazuh Detection Engineering
+# Transition to Centralized Detection
 
-## 7. Custom Rule File
+When Wazuh was introduced, the project gained the ability to centralize security telemetry.
 
-A dedicated rule file was created:
+This changed the detection model from:
 
-`/var/ossec/etc/rules/cyberlab_rules.xml`
+    Local Host Observation
 
-Before modification, the existing Wazuh rule configuration was backed up.
+to:
 
-Custom rule IDs were allocated from the local/custom rule range.
+    Centralized Event Collection
+             |
+             v
+       Detection Rules
+             |
+             v
+        SOC Analysis
+
+This was the beginning of formal detection engineering in the lab.
 
 ---
 
-## 8. Custom Windows Service Detection
+# Detection Engineering Objectives
 
-Custom rule:
+The project adopted several detection goals.
 
-`100100`
+## Detect Real Activity
 
-was created for Windows service-installation activity.
+Rules should be triggered by actual security-relevant events.
 
-The rule inherits from built-in Wazuh rule:
+## Validate Every Detection
 
-`61138`
+A rule should not be considered complete simply because it exists.
+
+Controlled traffic or host activity must prove that it fires.
+
+## Reduce False Positives
+
+Rules should be tuned so normal activity does not overwhelm the analyst.
+
+## Preserve Context
+
+The detection should provide enough information to understand what happened.
+
+## Use Multiple Telemetry Layers
+
+Where possible, endpoint, firewall, IDS, and application evidence should support one another.
+
+---
+
+# Windows Detection Foundation
+
+`LAB-WIN-01` became the first heavily monitored endpoint.
+
+Its monitoring stack eventually included:
+
+- Windows Security logs
+- Sysmon
+- PowerShell logging
+- PowerShell transcription
+- advanced auditing
+- Defender telemetry
+- Windows Firewall events
+- File Integrity Monitoring
+
+This created the raw telemetry needed for Windows detection engineering.
+
+---
+
+# Windows Process Visibility
+
+Process activity became one of the most important security data sources.
+
+The lab used:
+
+- Windows Process Creation auditing
+- command-line capture
+- Sysmon
+
+This made it possible to investigate:
+
+- PowerShell
+- command shells
+- LOLBins
+- suspicious child processes
+- administrative tools
+
+---
+
+# PowerShell Detection Context
+
+PowerShell telemetry included:
+
+- Script Block Logging
+- Module Logging
+- transcription
+- Sysmon process events
+- command-line audit events
+
+This created overlapping evidence around PowerShell execution.
+
+A future suspicious PowerShell action could therefore be correlated across multiple sources rather than depending on a single event.
+
+---
+
+# Windows Firewall Detection Context
+
+The Windows endpoint also monitored:
+
+`Event ID 5157`
+
+This represents a connection blocked by the Windows Filtering Platform.
+
+This event became useful for distinguishing:
+
+- OPNsense firewall blocks
+- Windows host firewall blocks
+
+That distinction is important during investigation.
+
+---
+
+# File Integrity Monitoring
+
+Wazuh File Integrity Monitoring was introduced as another detection source.
+
+This supports scenarios involving:
+
+- file creation
+- file modification
+- configuration tampering
+- persistence artifacts
+
+FIM events can later be correlated with process and user activity.
+
+---
+
+# Linux Detection Foundation
+
+`LAB-UBUNTU-01` became the primary Linux detection-engineering system.
+
+Monitoring included:
+
+- Linux logs
+- authentication events
+- auditd
+- user-management activity
+- Wazuh agent telemetry
+
+This provided a platform for custom Linux rules.
+
+---
+
+# Native Linux User Creation Detection
+
+A controlled user-creation action was generated on:
+
+`LAB-UBUNTU-01`
+
+A custom Wazuh rule was created and validated:
+
+`Rule 100200`
+
+Purpose:
+
+Detect a native Linux user-add event.
+
+The detection confirmed the full chain:
+
+    Linux Administrative Action
+             |
+             v
+         System Log
+             |
+             v
+          Wazuh Agent
+             |
+             v
+        LAB-SIEM-01
+             |
+             v
+        Rule 100200
+
+Status:
+
+**VALIDATED**
+
+---
+
+# Native Linux User Deletion Detection
+
+A controlled user-deletion action was also generated.
+
+Custom Wazuh rule:
+
+`Rule 100201`
+
+Purpose:
+
+Detect native Linux user deletion.
+
+Status:
+
+**VALIDATED**
+
+These detections demonstrated that the lab was capable of building custom rules around normal operating-system telemetry.
+
+---
+
+# Why the Linux Rules Mattered
+
+The user-add and user-delete detections were important because they proved the project had progressed beyond:
+
+- installing agents
+- collecting logs
+- viewing dashboards
+
+The lab was now actively converting telemetry into security detections.
+
+---
+
+# OPNsense Firewall Detection Engineering
+
+After endpoint detections were established, OPNsense firewall telemetry was integrated into Wazuh.
+
+This introduced network enforcement data into the detection pipeline.
+
+---
+
+# Firewall Telemetry Value
+
+Firewall logs provided visibility into:
+
+- blocked connections
+- attempted lateral movement
+- segmentation violations
+- unauthorized service access
+
+This added network context that endpoint logs could not always provide.
+
+---
+
+# Firewall Correlation Rule
+
+A Wazuh firewall correlation rule was successfully validated:
+
+`Rule 87702`
+
+This confirmed that OPNsense events could trigger actionable Wazuh detections.
+
+Status:
+
+**VALIDATED**
+
+---
+
+# Firewall Detection Example
+
+A typical firewall detection path is:
+
+    Source Host
+        |
+        v
+    Unauthorized Connection
+        |
+        v
+    LAB-FW-01
+        |
+        v
+    OPNsense Block
+        |
+        v
+    Firewall Log
+        |
+        v
+    Wazuh
+        |
+        v
+    Rule 87702
+
+This provides visibility into attempted communication that never reaches the destination host.
+
+---
+
+# Why Firewall Detection Matters
+
+Without firewall telemetry, a blocked attack path may produce no endpoint evidence at all.
+
+For example:
+
+    REDNET → ADNET LDAP/389
+
+If OPNsense blocks the traffic before it reaches the Domain Controller, the endpoint may never log an application event.
+
+The firewall log therefore becomes the primary detection source.
+
+---
+
+# Suricata Detection Engineering
+
+Suricata introduced network IDS alerts into the detection architecture.
+
+Primary monitored interface:
+
+`em2`
+
+This corresponds to REDNET.
+
+The goal was to detect attack patterns even when firewall policy allowed the connection.
+
+---
+
+# First Suricata Alert
+
+A controlled Suricata test produced:
+
+`Signature ID 2100498`
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Category:
+
+`Potentially Bad Traffic`
 
 Severity:
 
-`Level 10`
+`2`
 
-MITRE ATT&CK mapping:
+This proved that Suricata itself could detect the test traffic.
 
-`T1543.003 — Windows Service`
+The next challenge was getting that event into Wazuh correctly.
+
+---
+
+# Initial Decoder Failure
+
+The first Suricata events did not decode correctly in Wazuh.
+
+They fell through to:
+
+`Rule 1002`
+
+This showed that the event was arriving, but Wazuh did not yet understand the event structure properly.
+
+This became an important detection-engineering troubleshooting phase.
+
+---
+
+# Decoder Troubleshooting
+
+The project investigated:
+
+- syslog formatting
+- decoder matching
+- JSON structure
+- Wazuh test tools
+- event transport
+
+A custom decoder was introduced during this phase.
+
+Observed decoder name:
+
+`suricata-eve-syslog`
+
+This helped confirm that the event could be matched more specifically.
+
+---
+
+# Transition to JSON
+
+The architecture was later simplified.
+
+Suricata events were ingested as structured JSON instead of maintaining unnecessary custom wrapper logic.
+
+The effective decoder became:
+
+`json`
+
+This was a cleaner and more maintainable solution.
+
+---
+
+# Built-In Wazuh Suricata Detection
+
+Once the JSON structure was processed correctly, Wazuh's built-in Suricata rules were able to handle the event.
+
+Ruleset file:
+
+`0475-suricata_rules.xml`
+
+Detection:
+
+`Rule 86601`
 
 Description:
 
-`CyberLab: Windows service installation detected`
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
 
-A controlled service named:
+Status:
 
-`CYBERLAB-RULE-TEST`
-
-was created to verify the rule.
-
-The custom rule successfully generated a Wazuh alert.
+**VALIDATED**
 
 ---
 
-## 9. Custom Scheduled Task Detection
+# Retiring the Custom Wrapper
 
-Custom rule:
+Once the built-in JSON path worked, the custom Suricata wrapper decoder was no longer necessary.
 
-`100101`
+This was an important engineering decision.
 
-was created for scheduled-task creation.
+A good detection architecture should not maintain custom code where a reliable built-in solution already exists.
 
-The rule inherits from built-in Wazuh rule:
+The final design therefore favors:
 
-`60228`
+- simpler parsing
+- structured JSON
+- built-in Wazuh rules
+- less custom maintenance
 
-Severity:
+---
 
-`Level 9`
+# Suricata Event Transport
 
-MITRE ATT&CK mapping:
+A dedicated Suricata telemetry path was created using:
 
-`T1053.005 — Scheduled Task`
+`UDP/5514`
+
+Destination:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+rsyslog receives the events and writes them to:
+
+`/var/log/suricata/eve.json`
+
+Wazuh then ingests that file as JSON.
+
+---
+
+# Final Suricata Detection Pipeline
+
+The final pipeline is:
+
+    Network Traffic
+         |
+         v
+      Suricata
+         |
+         v
+    OPNsense Remote Logging
+         |
+         | UDP/5514
+         v
+    LAB-SIEM-01
+         |
+         v
+       rsyslog
+         |
+         v
+    /var/log/suricata/eve.json
+         |
+         v
+    Wazuh Logcollector
+         |
+         v
+       JSON Decoder
+         |
+         v
+    Wazuh Rule 86601
+
+---
+
+# Controlled Suricata Validation
+
+A temporary web resource was created on:
+
+`LAB-DMZ-01`
+
+containing:
+
+    uid=0(root) gid=0(root) groups=0(root)
+
+Kali requested that resource.
+
+Suricata generated:
+
+    SID: 2100498
+    Signature: GPL ATTACK_RESPONSE id check returned root
+    Category: Potentially Bad Traffic
+    Severity: 2
+
+Wazuh generated:
+
+`Rule 86601`
+
+This validated the complete detection path.
+
+---
+
+# full_log Troubleshooting
+
+One Suricata event in Wazuh showed:
+
+`full_log: null`
+
+This initially looked suspicious.
+
+However, the structured event data was still present.
+
+The event could be investigated using:
+
+- rule ID
+- location
+- JSON fields
+
+The lesson was:
+
+**Do not assume a detection failed simply because one optional field is empty.**
+
+---
+
+# Live JSON Parsing Lesson
+
+Direct `jq` parsing against a live log file occasionally returned errors.
+
+Because valid Wazuh alerts were still being produced, the entire pipeline was not treated as broken.
+
+This reinforced a key engineering principle:
+
+**Correlate symptoms with end-to-end behaviour before changing a working pipeline.**
+
+---
+
+# Nginx Detection Engineering
+
+The DMZ introduced a new detection source:
+
+`Nginx`
+
+The Wazuh agent on:
+
+`LAB-DMZ-01`
+
+monitors:
+
+`/var/log/nginx/access.log`
+
+using:
+
+`apache`
+
+log format.
+
+It also monitors:
+
+`/var/log/nginx/error.log`
+
+using:
+
+`syslog`
+
+log format.
+
+---
+
+# Controlled Nginx Detection
+
+Kali generated a controlled request:
+
+`/wazuh-nginx-verify-01`
+
+Nginx returned:
+
+`404`
+
+The access log recorded the request.
+
+Wazuh generated:
+
+`Rule 31101`
 
 Description:
 
-`CyberLab: Scheduled task creation detected`
+`Web server 400 error code.`
 
-A controlled task named:
+Event details included:
 
-`\CyberLab\RuleTest`
+- Agent `LAB-DMZ-01`
+- Source IP `10.10.10.10`
+- Decoder `web-accesslog`
 
-was created.
+Status:
 
-The custom rule successfully fired.
-
----
-
-## 10. Detection Tuning and Noise Suppression
-
-Detection engineering also included tuning known authorized test activity.
-
-Suppression rules were created for:
-
-- `CYBERLAB-RULE-TEST`
-- `\CyberLab\RuleTest`
-
-These suppress only the known authorized CyberLab test objects.
-
-After tuning:
-
-- New test executions did not create additional `100100` or `100101` alerts.
-- Other related telemetry such as Event ID `4688` process-creation activity remained visible.
-
-This demonstrated an important SOC principle:
-
-> Detection tuning should reduce known noise without blindly suppressing the surrounding telemetry required for investigation.
+**VALIDATED**
 
 ---
 
-# Part 3 — OPNsense Remote Syslog Integration
+# Why the Nginx Detection Matters
 
-## 11. Wazuh Remote Syslog Listener
+The Nginx event demonstrated application-layer visibility.
 
-The existing Wazuh secure agent connection remained unchanged:
+The same REDNET-to-DMZ traffic could now produce evidence at multiple layers:
 
-- Protocol: TCP
-- Port: `1514`
+    Kali
+      |
+      v
+    OPNsense
+      |
+      +--> Firewall Evidence
+      |
+      +--> Suricata Evidence
+      |
+      v
+    Nginx
+      |
+      +--> Access Log
+      |
+      v
+    Wazuh
 
-A separate remote syslog listener was created for OPNsense.
-
-Configuration:
-
-- Connection type: `syslog`
-- Protocol: UDP
-- Port: `514`
-- Allowed sender: `10.10.40.1`
-- Local listener address: `10.10.40.10`
-
-This restricted the syslog listener to the OPNsense SOCNET interface.
-
-After restarting Wazuh, verification with `ss` confirmed:
-
-`10.10.40.10:514`
-
-was listening under:
-
-`wazuh-remoted`
+This is a major improvement over relying on one detection source.
 
 ---
 
-## 12. OPNsense Remote Logging
+# Active Directory Detection Context
 
-OPNsense remote logging was configured to send firewall logs to:
+When Active Directory was introduced, the detection surface expanded again.
 
-`10.10.40.10:514/UDP`
+`LAB-DC-01` provides events such as:
 
-Application:
+- `4672`
+- `4719`
+- `5136`
 
-`filterlog`
+These support future detections around:
 
-The destination represents the Wazuh manager on SOCNET.
-
-A packet capture on the SIEM confirmed live traffic:
-
-`10.10.40.1 → 10.10.40.10:514/UDP`
-
-This verified the network path independently of the SIEM parsing layer.
+- privileged logons
+- audit-policy changes
+- Active Directory object modifications
 
 ---
 
-## 13. Wazuh PF Decoder
+# Event 4672
 
-Temporary JSON archive logging was enabled during troubleshooting:
+Event:
 
-`<logall_json>yes</logall_json>`
+`4672`
 
-This allowed raw OPNsense syslog events to be inspected.
+represents special privileges assigned to a new logon.
 
-Wazuh automatically recognized OPNsense `filterlog` messages using its built-in:
+This can provide context for:
 
-`pf`
+- Domain Admin sessions
+- privileged administration
+- suspicious elevated activity
 
-decoder.
+The event itself is not automatically malicious.
 
-Decoded fields included:
-
-- `action`
-- `protocol`
-- `srcip`
-- `srcport`
-- `dstip`
-- `dstport`
-- `id`
-- `length`
-
-Example decoded traffic:
-
-`10.10.20.20 → 10.10.20.1:53 UDP PASS`
-
-Because OPNsense is an agentless syslog source, the event appears under Wazuh manager agent ID `000`.
-
-The remote sender can be identified through:
-
-`location = 10.10.40.1`
+Its value comes from correlation.
 
 ---
 
-## 14. Controlled Firewall Block Test
+# Event 4719
 
-To test segmentation and detection, Kali on REDNET attempted to connect to the Windows SMB service on CORPNET:
+Event:
 
-`10.10.10.10 → 10.10.20.20:445`
+`4719`
 
-The connection was blocked by OPNsense as expected.
+represents a system audit policy change.
 
-Wazuh received and decoded the firewall events as:
+This is particularly important for detecting possible:
 
-- Protocol: TCP
-- Action: block
-- Source: `10.10.10.10`
-- Destination: `10.10.20.20`
-- Destination port: `445`
-
-This verified the complete path:
-
-`Kali → REDNET → OPNsense → Block → Syslog → Wazuh → PF Decoder`
+- defensive control tampering
+- unauthorized audit changes
+- defense evasion
 
 ---
 
-## 15. Built-In OPNsense/PF Detection Rules
+# Event 5136
 
-Testing with `wazuh-logtest` revealed that Wazuh already provides built-in PF firewall detection rules.
+Event:
 
-### Rule 87701
+`5136`
+
+represents Active Directory object modification.
+
+This can support detections involving:
+
+- account changes
+- group-related modifications
+- directory configuration changes
+- persistence
+
+---
+
+# Domain Controller Sysmon
+
+Sysmon was added to:
+
+`LAB-DC-01`
+
+and tuned to focus on high-value executables.
+
+Examples include:
+
+- powershell
+- pwsh
+- cmd
+- rundll32
+- regsvr32
+- mshta
+- certutil
+- bitsadmin
+- wscript
+- cscript
+- schtasks
+- nltest
+- ntdsutil
+- whoami
+- net
+- net1
+
+This provides process context around identity-related activity.
+
+---
+
+# Detection Correlation
+
+The final architecture supports multi-source correlation.
+
+For example:
+
+    Event 5136
+        |
+        +
+    Event 4672
+        |
+        +
+    Sysmon ProcessCreate
+        |
+        +
+    PowerShell 4104
+        |
+        v
+    Wazuh Investigation
+
+This is far more useful than treating each event independently.
+
+---
+
+# Detection Development Workflow
+
+The project gradually established a professional detection-engineering workflow.
+
+The final process is:
+
+    1. Define the behaviour to detect
+    2. Identify the telemetry source
+    3. Generate controlled activity
+    4. Confirm the raw event exists
+    5. Confirm Wazuh receives it
+    6. Check decoder output
+    7. Build or select detection rule
+    8. Trigger the behaviour again
+    9. Confirm alert generation
+    10. Review event context
+    11. Tune noise or false positives
+    12. Retest
+    13. Document evidence
+
+This workflow should be used for future detection development.
+
+---
+
+# Telemetry Before Rules
+
+An important lesson was:
+
+**Do not start by writing a rule when the required telemetry has not been confirmed.**
+
+Before building detection logic, verify:
+
+- the event exists
+- the agent or collector receives it
+- the decoder parses it correctly
+
+Only then should detection logic be added.
+
+This prevents time being wasted debugging rules for events that never reach the SIEM.
+
+---
+
+# Raw Event Validation
+
+A professional detection workflow begins with raw evidence.
+
+For example:
+
+    Attack
+      |
+      v
+    Raw Event
+      |
+      v
+    Wazuh Ingestion
+      |
+      v
+    Decoder
+      |
+      v
+    Rule
+
+Each stage must work before the next one can be trusted.
+
+---
+
+# Decoder Validation
+
+Decoder troubleshooting became one of the major lessons from the Suricata phase.
+
+A rule cannot reliably match fields that were never extracted.
+
+This means decoder validation is a core part of detection engineering.
+
+---
+
+# Built-In Rules vs Custom Rules
+
+The project uses both.
+
+## Built-In Rules
+
+Preferred where Wazuh already provides reliable support.
+
+Examples:
+
+- Suricata Rule `86601`
+- Nginx Rule `31101`
+
+## Custom Rules
+
+Used when the lab needs detection logic that is not provided by default.
+
+Examples:
+
+- Linux Rule `100200`
+- Linux Rule `100201`
+- firewall correlation Rule `87702`
+
+The goal is not to create custom rules unnecessarily.
+
+---
+
+# Detection Quality
+
+A detection should provide enough context for an analyst to understand:
+
+- what happened
+- where it happened
+- which host was involved
+- which user or source was involved
+- which rule fired
+- what should be investigated next
+
+A rule that generates noise without useful context is not considered mature.
+
+---
+
+# False Positive Reduction
+
+Detection tuning aims to reduce unnecessary alerts while preserving meaningful activity.
+
+Examples of noise-reduction work include:
+
+- Sysmon ProcessCreate filtering
+- Sysmon DNS filtering
+- avoiding unnecessary custom Suricata wrappers
+- choosing specific telemetry sources
+- focusing firewall logging on meaningful boundaries
+
+---
+
+# Detection Engineering and Storage
+
+Collecting every possible event can:
+
+- consume SIEM storage
+- slow searches
+- increase analyst fatigue
+- hide important alerts
+
+The project therefore follows the principle:
+
+**Collect enough to detect and investigate, not everything simply because it is available.**
+
+---
+
+# Detection Evidence
+
+Important detections should be supported by evidence such as:
+
+- raw logs
+- Wazuh alerts
+- source IPs
+- destination IPs
+- rule IDs
+- timestamps
+- process names
+- screenshots where appropriate
+
+This ensures the GitHub portfolio demonstrates actual validation rather than only configuration.
+
+---
+
+# Final Validated Detection Inventory
+
+## Linux User Creation
 
 Rule:
 
-`87701`
+`100200`
 
-Severity:
+Status:
 
-`Level 5`
-
-Description:
-
-`pfSense firewall drop event.`
-
-Although the description refers to pfSense, the rule also works with OPNsense because both produce compatible PF/filterlog firewall records.
-
-The rule contains:
-
-`<options>no_log</options>`
-
-This means individual firewall blocks are recognized internally but are intentionally not written as ordinary alerts.
-
-This design prevents the SIEM from generating an alert for every routine firewall drop.
+**PASS**
 
 ---
 
-## 16. Firewall Correlation — Rule 87702
+## Linux User Deletion
 
-Wazuh rule:
+Rule:
+
+`100201`
+
+Status:
+
+**PASS**
+
+---
+
+## OPNsense Firewall Correlation
+
+Rule:
 
 `87702`
 
-correlates repeated firewall blocks.
+Status:
 
-The built-in rule uses:
+**PASS**
 
-- Frequency: `18`
-- Timeframe: `45 seconds`
-- Ignore period: `240 seconds`
-- Same-source-IP correlation
+---
 
-Twenty controlled SMB connection attempts were generated from Kali:
+## Suricata Alert
 
-`10.10.10.10 → 10.10.20.20:445`
+Rule:
 
-OPNsense blocked the attempts.
+`86601`
 
-Wazuh successfully generated:
+Signature:
 
-- Rule ID: `87702`
-- Severity: `Level 10`
-- Source IP: `10.10.10.10`
+`GPL ATTACK_RESPONSE id check returned root`
+
+Status:
+
+**PASS**
+
+---
+
+## Nginx Web Detection
+
+Rule:
+
+`31101`
 
 Description:
 
-`Multiple pfSense firewall blocks events from same source.`
+`Web server 400 error code.`
 
-This proved that Wazuh correlates repeated low-level firewall events into a higher-severity security alert.
+Status:
 
----
-
-## 17. Detection Engineering Lesson
-
-The OPNsense integration demonstrated the difference between:
-
-`Event → Detection → Correlation → Alert`
-
-A firewall block is not automatically evidence of an attack.
-
-Generating an alert for every dropped packet would create excessive SOC noise.
-
-Instead:
-
-1. OPNsense records the firewall block.
-2. Wazuh decodes the event.
-3. Rule `87701` tracks individual drops without logging every one as an alert.
-4. Rule `87702` identifies repeated activity from the same source.
-5. Wazuh generates a higher-severity correlated alert.
-
-This provides a more realistic SOC monitoring model.
+**PASS**
 
 ---
 
-## 18. Raw Archive Cleanup
+# Supporting Telemetry
 
-`logall_json` was enabled only temporarily while inspecting OPNsense events.
+Detection engineering is also supported by:
 
-After verification it was returned to:
+- Windows Security events
+- Sysmon
+- PowerShell
+- Defender
+- Windows Firewall Event 5157
+- auditd
+- Active Directory events
+- OPNsense firewall logs
+- Suricata
+- Nginx
 
-`<logall>no</logall>`
-
-`<logall_json>no</logall_json>`
-
-This prevents unnecessary archive growth while preserving normal Wazuh alert generation.
-
----
-
-## 19. Verified Architecture
-
-The verified network-security monitoring path is now:
-
-`Kali / Windows / Ubuntu`
-↓
-`Segmented CyberLab Networks`
-↓
-`OPNsense Firewall`
-↓
-`Firewall Allow / Block Decision`
-↓
-`filterlog`
-↓
-`UDP 514 Remote Syslog`
-↓
-`LAB-SIEM-01`
-↓
-`Wazuh remoted`
-↓
-`PF Decoder`
-↓
-`Built-In + Custom Detection Rules`
-↓
-`Correlation`
-↓
-`SOC Alert / Investigation`
+This gives the lab multiple sources for future rules.
 
 ---
 
-## 20. Milestone Snapshots
+# Final Purple Team Detection Model
 
-The following verified snapshots were created:
+The final environment supports the following operational model:
 
-### Windows
+    Threat Behaviour
+          |
+          v
+    Controlled Simulation
+          |
+          v
+    Endpoint / Network / Application Telemetry
+          |
+          v
+    Wazuh
+          |
+          v
+    Detection
+          |
+          v
+    SOC Investigation
+          |
+          v
+    Detection Gap Analysis
+          |
+          v
+    Rule / Logging Improvement
+          |
+          v
+    Retest
 
-`Windows - Extended Security Telemetry Verified`
-
-### Wazuh
-
-`LAB-SIEM-01 - Custom Detection Rules Verified`
-
-`LAB-SIEM-01 - OPNsense Firewall Detection Verified`
-
-### OPNsense
-
-`OPNsense - Wazuh Syslog Integration Verified`
-
----
-
-## 21. Current Security Capabilities
-
-At this milestone, CyberLab can monitor:
-
-- Windows process creation
-- Sysmon telemetry
-- PowerShell activity
-- PowerShell transcription integrity
-- Windows authentication
-- Privileged logons
-- User-account changes
-- Local-group membership changes
-- Service installation
-- Scheduled task creation
-- Microsoft Defender detections
-- Windows Firewall blocked connections
-- File Integrity Monitoring
-- OPNsense firewall traffic
-- Cross-zone blocked connections
-- Repeated firewall-block correlation
-- Custom Wazuh detections
-- MITRE ATT&CK mappings
-- Detection tuning and suppression
-
-The next phase extends network visibility from firewall decisions into network intrusion detection using Suricata IDS.
+This is the core Purple Team cycle for future exercises.
 
 ---
 
-## 22. Next Phase
+# Detection Gap Philosophy
 
-### Phase 4 — Suricata IDS
+A failed detection is not necessarily a failed exercise.
 
-Planned workflow:
+If a controlled attack produces no alert, the correct questions are:
 
-`Network Traffic → OPNsense → Suricata IDS → Alert → Wazuh → Investigation`
+- Was telemetry generated?
+- Was it ingested?
+- Was it decoded?
+- Was there an existing rule?
+- Was the rule too narrow?
+- Was the activity expected to trigger?
 
-Objectives:
+A missing detection can become a detection-engineering task.
 
-- Deploy Suricata on OPNsense
-- Select the correct monitoring interfaces
-- Configure IDS mode before IPS
-- Configure and update Suricata rules
-- Generate controlled IDS test traffic
-- Understand Suricata signatures
-- Forward Suricata alerts to Wazuh
-- Correlate Suricata network alerts with endpoint and firewall telemetry
-- Document the completed IDS architecture
+This is one of the main purposes of the lab.
+
+---
+
+# Final Detection Architecture
+
+The complete architecture can be summarized as:
+
+    REDNET / User Activity
+             |
+             v
+       LAB-FW-01
+       OPNsense
+        |      |
+        |      +--> Firewall Logs
+        |
+        +--> Suricata IDS
+             |
+             v
+        Target Systems
+        |     |     |
+        |     |     |
+     Windows Linux  DMZ
+        |     |     |
+        +-----+-----+
+             |
+             v
+         Wazuh Agents
+             |
+             v
+        LAB-SIEM-01
+             |
+             v
+    Decoding / Correlation
+             |
+             v
+          Alerts
+             |
+             v
+     SOC Investigation
+             |
+             v
+    Detection Engineering
+
+---
+
+# Final Validation Summary
+
+| Detection Capability | Result |
+|---|---|
+| Centralized Wazuh detection | PASS |
+| Windows telemetry | PASS |
+| Linux telemetry | PASS |
+| auditd telemetry | PASS |
+| Sysmon telemetry | PASS |
+| PowerShell telemetry | PASS |
+| Windows Firewall telemetry | PASS |
+| OPNsense firewall telemetry | PASS |
+| Linux Rule 100200 | PASS |
+| Linux Rule 100201 | PASS |
+| Firewall Rule 87702 | PASS |
+| Suricata ingestion | PASS |
+| Suricata Rule 86601 | PASS |
+| Nginx ingestion | PASS |
+| Nginx Rule 31101 | PASS |
+| Active Directory telemetry | PASS |
+| Domain Controller Sysmon | PASS |
+| Multi-source detection architecture | PASS |
+
+---
+
+# Historical vs Current State
+
+This document intentionally preserves the full detection-engineering evolution.
+
+Historical stages include:
+
+- manual local observation
+- fail2ban validation
+- no SIEM
+- endpoint log collection
+- Windows monitoring
+- Linux monitoring
+- first custom Linux rules
+- firewall-log integration
+- Suricata decoder failure
+- custom decoder testing
+- transition to structured JSON
+- built-in Suricata detection
+- Active Directory monitoring
+- Nginx monitoring
+
+The authoritative current state is:
+
+    Detection Platform: Wazuh
+    SIEM Host: LAB-SIEM-01
+    Windows Monitoring: Active
+    Linux Monitoring: Active
+    Active Directory Monitoring: Active
+    DMZ Monitoring: Active
+    Firewall Monitoring: Active
+    Suricata Monitoring: Active
+    Application Monitoring: Active
+    Custom Detection Engineering: Active
+
+---
+
+# Evolution Summary
+
+Detection engineering evolved through:
+
+    Manual Observation
+          |
+          v
+    fail2ban Validation
+          |
+          v
+    Wazuh Deployment
+          |
+          v
+    Windows Telemetry
+          |
+          v
+    Linux Telemetry
+          |
+          v
+    Custom Linux Rules
+          |
+          v
+    OPNsense Firewall Detection
+          |
+          v
+    Suricata Integration
+          |
+          v
+    Decoder Troubleshooting
+          |
+          v
+    JSON / Built-In Rules
+          |
+          v
+    Active Directory Monitoring
+          |
+          v
+    Nginx Monitoring
+          |
+          v
+    Multi-Source Detection Engineering
+          |
+          v
+    Purple Team Validation Platform
+
+---
+
+# Final Status
+
+The baseline detection-engineering phase is complete.
+
+The Cybersecurity Home Lab now supports detection across:
+
+- endpoint
+- Linux
+- Windows
+- Active Directory
+- firewall
+- IDS
+- web application
+
+The environment has moved from basic log collection into a validated detection-engineering platform.
+
+Future work should focus on realistic attack scenarios and answer questions such as:
+
+- Did the attack generate telemetry?
+- Did Wazuh detect it?
+- Was the alert useful?
+- Was important context missing?
+- Did the detection create noise?
+- How can the detection be improved?
+- Can the improved detection survive retesting?
+
+This detection-measurement-improvement cycle is now the foundation for future SOC and Purple Team operations in the lab.
