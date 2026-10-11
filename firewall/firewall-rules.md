@@ -2,233 +2,213 @@
 
 ## Overview
 
-This document records the evolution, design, implementation, and final validated state of the firewall rules used in the Cybersecurity Home Lab.
+This document records the complete evolution of the firewall rules used throughout the Cybersecurity Home Lab, from the earliest flat-network environment through the final validated six-zone OPNsense architecture.
 
-The lab began as a simple flat VirtualBox network and later evolved into a segmented six-zone architecture protected by OPNsense.
+The firewall configuration developed in stages as the lab expanded.
 
-The final firewall design supports:
+The major phases were:
 
-- network segmentation
-- least-privilege communication
-- Active Directory access
-- SIEM telemetry
-- Suricata monitoring
-- controlled REDNET attack traffic
-- DMZ exposure
-- restricted administrative access
-- logged deny boundaries
-- controlled Internet access
+1. Original flat VirtualBox lab
+2. Introduction of OPNsense
+3. Initial four-zone segmentation
+4. CORPNET, REDNET and SERVERNET rule development
+5. SOCNET and Wazuh integration
+6. Suricata and firewall telemetry integration
+7. ADNET and Active Directory firewall policy
+8. DMZ deployment
+9. Restricted DMZ administration
+10. Final six-zone validation
 
-The authoritative final firewall is implemented on:
+The current authoritative firewall is:
 
 `LAB-FW-01`
 
-using OPNsense.
+running OPNsense.
+
+The final design follows:
+
+- least privilege
+- explicit allow rules
+- broad private-network deny rules
+- default-deny behaviour
+- centralized monitoring
+- logged security boundaries
+- restricted administration
+- controlled offensive traffic
 
 ---
 
-# Historical Evolution
+# Phase 1 — Original Flat Lab
 
-## Early Lab
+## Original Network
 
-The original lab used a simple network:
+The earliest version of the cybersecurity lab used:
 
 `192.168.56.0/24`
 
-with:
+Primary systems included:
 
-- Kali Linux
-- Windows
-- Ubuntu Server
+- Kali Linux — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu Server — `192.168.56.30`
 
-This environment supported basic attacker/defender exercises but provided limited segmentation.
+VirtualBox NAT was also used where Internet access was required.
 
-There was no dedicated:
+At this stage there was no dedicated OPNsense firewall separating the systems into trust zones.
 
-- firewall zone architecture
-- SOC network
-- Active Directory network
-- DMZ
-- structured east-west policy
+The lab supported early security exercises such as:
 
-As the project evolved toward Purple Team and SOC training, this model was replaced.
+- Nmap scanning
+- SSH administration
+- fail2ban
+- Hydra testing
+- Windows/Linux connectivity
+- simple attacker-versus-defender exercises
+
+The limitation was that all primary systems effectively operated within the same internal trust environment.
+
+There was no realistic mechanism for enforcing enterprise-style east-west segmentation.
 
 ---
 
-# Introduction of OPNsense
+# Phase 2 — Introduction of OPNsense
 
-OPNsense was introduced as the central routing and security platform.
+As the lab evolved toward SOC and Purple Team training, the flat architecture was replaced with OPNsense-controlled segmentation.
 
-The first segmented design created:
+`LAB-FW-01` became the central:
+
+- firewall
+- router
+- network-policy enforcement point
+- logging source
+- later IDS platform
+
+The first segmented design introduced four primary internal security zones:
 
 - REDNET
 - CORPNET
 - SERVERNET
 - SOCNET
 
-The architecture was later expanded with:
-
-- ADNET
-- DMZ
-
-This produced the final six-zone environment.
+ADNET and DMZ were introduced later.
 
 ---
 
-# Final Security Zones
+# Initial Four-Zone Addressing
 
-| Zone | Network | Gateway |
-|---|---|---|
-| REDNET | `10.10.10.0/24` | `10.10.10.1` |
-| CORPNET | `10.10.20.0/24` | `10.10.20.1` |
-| SERVERNET | `10.10.30.0/24` | `10.10.30.1` |
-| SOCNET | `10.10.40.0/24` | `10.10.40.1` |
-| ADNET | `10.10.50.0/24` | `10.10.50.1` |
-| DMZ | `10.10.60.0/24` | `10.10.60.1` |
+## REDNET
 
----
+Network:
 
-# Firewall Design Strategy
+`10.10.10.0/24`
 
-The rule base follows several principles.
+Gateway:
 
-## Least Privilege
+`10.10.10.1`
 
-Only required communication paths are allowed.
+Primary host:
 
-## Specific Allow Before Broad Deny
+`LAB-KALI-01 — 10.10.10.10`
 
-Narrow rules are placed above broader private-network blocks.
+Purpose:
 
-## Zone Isolation
-
-Each network is treated according to its trust level and role.
-
-## Explicit Administrative Access
-
-Management access is restricted to known source hosts.
-
-## Monitoring First
-
-Required Wazuh and logging flows are explicitly permitted.
-
-## Logged Security Boundaries
-
-Important deny rules are logged for investigation and validation.
+Offensive security and adversarial simulation.
 
 ---
 
-# Firewall Aliases
+## CORPNET
 
-Aliases are used to make the policy easier to understand and maintain.
+Network:
+
+`10.10.20.0/24`
+
+Gateway:
+
+`10.10.20.1`
+
+Primary host:
+
+`LAB-WIN-01 — 10.10.20.20`
+
+Purpose:
+
+Corporate Windows workstation environment.
+
+---
+
+## SERVERNET
+
+Network:
+
+`10.10.30.0/24`
+
+Gateway:
+
+`10.10.30.1`
+
+Primary host:
+
+`LAB-UBUNTU-01 — 10.10.30.30`
+
+Purpose:
+
+Protected internal Linux server environment.
+
+---
+
+## SOCNET
+
+Network:
+
+`10.10.40.0/24`
+
+Gateway:
+
+`10.10.40.1`
+
+Primary host:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+Purpose:
+
+Centralized Wazuh security monitoring.
+
+---
+
+# Initial Firewall Aliases
+
+A structured alias system was introduced early in the OPNsense build.
+
+Important aliases included:
 
 ## `ADMIN_WORKSTATION`
 
-Type:
+Represents the approved Windows administration host.
 
-`Host(s)`
-
-Content:
+Final address:
 
 `10.10.20.20`
 
-Represents:
+---
 
-`LAB-WIN-01`
+## `KALI_ATTACKER`
 
-Purpose:
+Represents the offensive workstation.
 
-Approved administrative workstation for DMZ SSH management.
+Address:
+
+`10.10.10.10`
 
 ---
 
-## `LAB_DMZ_01`
+## `UBUNTU_SERVER`
 
-Type:
+Represents the protected internal Linux server.
 
-`Host(s)`
+Address:
 
-Content:
-
-`10.10.60.10`
-
-Represents:
-
-`LAB-DMZ-01`
-
-Purpose:
-
-Dedicated reference for the DMZ web server.
-
----
-
-## `WAZUH_SERVER`
-
-Type:
-
-`Host(s)`
-
-Content:
-
-`10.10.40.10`
-
-Represents:
-
-`LAB-SIEM-01`
-
-Purpose:
-
-Central Wazuh destination.
-
----
-
-## `WAZUH_AGENT_PORTS`
-
-Type:
-
-`Port(s)`
-
-Content:
-
-- `1514`
-- `1515`
-
-Purpose:
-
-Wazuh agent communication and enrollment.
-
----
-
-## `HTTP_HTTPS_PORTS`
-
-Type:
-
-`Port(s)`
-
-Content:
-
-- `80`
-- `443`
-
-Purpose:
-
-Approved outbound web traffic.
-
----
-
-## `DNS_PORT`
-
-Represents:
-
-DNS service traffic.
-
----
-
-## `NTP_PORT`
-
-Represents:
-
-NTP service traffic.
+`10.10.30.30`
 
 ---
 
@@ -236,181 +216,83 @@ NTP service traffic.
 
 Represents protected private/internal networks.
 
-Purpose:
-
-Used as the destination for broad inter-zone deny rules.
+This alias was used as the destination for broad segmentation blocks.
 
 ---
 
-# REDNET Rules
+## `SERVER_ADMIN_PORTS`
 
-## Purpose
+Ports:
 
-REDNET contains:
-
-`LAB-KALI-01 — 10.10.10.10`
-
-The zone is intentionally treated as untrusted.
-
----
-
-## Allow REDNET to DMZ HTTP
-
-Rule description:
-
-`ALLOW - REDNET to LAB-DMZ-01 HTTP`
-
-Configuration:
-
-    Action: Pass
-    Interface: REDNET
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: TCP
-    Source: REDNET network
-    Source Port: any
-    Destination: LAB_DMZ_01
-    Destination Port: HTTP (80)
+- `22`
+- `443`
 
 Purpose:
 
-Permit controlled web attack simulation from Kali to the DMZ.
-
-Validation:
-
-    curl http://10.10.60.10/
-
-Result:
-
-`HTTP 200`
-
-Status:
-
-**PASS**
+Approved administrative services for the internal Linux server during the early segmented phase.
 
 ---
 
-## Block REDNET to Unauthorized Private Networks
-
-Rule description:
-
-`BLOCK - REDNET to Unauthorized Private Networks`
-
-Configuration:
-
-    Action: Block
-    Interface: REDNET
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: Any
-    Source: REDNET network
-    Destination: PRIVATE_NETS
-    Logging: Enabled
-
-Purpose:
-
-Prevent REDNET from freely accessing protected internal systems.
-
-Validated examples:
-
-    REDNET → DMZ SSH/22        BLOCK
-    REDNET → CORPNET SMB/445   BLOCK
-    REDNET → ADNET LDAP/389    BLOCK
-
-Status:
-
-**PASS**
-
----
-
-# REDNET Rule Ordering
-
-The approved HTTP exception must be above the broader private-network block.
-
-Correct order:
-
-    ALLOW - REDNET to LAB-DMZ-01 HTTP
-    BLOCK - REDNET to Unauthorized Private Networks
-
-During implementation, traffic continued to be blocked until the allow rule was both correctly positioned and actually applied in OPNsense.
-
-This reinforced the importance of:
-
-- rule order
-- Save
-- Apply Changes
-- retesting with new traffic
-
----
-
-# CORPNET Rules
-
-## Purpose
-
-CORPNET contains:
-
-`LAB-WIN-01 — 10.10.20.20`
-
-The workstation requires access to:
-
-- Active Directory
-- Wazuh
-- restricted DMZ administration
-
----
-
-# CORPNET to ADNET
-
-The workstation requires multiple domain services.
-
-The final environment includes explicit firewall allowances for required Active Directory communication.
-
-Directly validated services include:
-
-    DNS TCP/53
-    Kerberos TCP/88
-    LDAP TCP/389
-
-These support:
-
-- domain authentication
-- DNS
-- Kerberos
-- LDAP
-- Group Policy
-- domain membership
-
----
-
-## CORPNET → AD DNS
-
-Source:
-
-`CORPNET`
-
-Destination:
-
-`LAB-DC-01`
-
-Protocol:
-
-`TCP`
+## `DNS_PORT`
 
 Port:
 
 `53`
 
+---
+
+## `NTP_PORT`
+
+Port:
+
+`123`
+
+---
+
+# Initial CORPNET Rules
+
+CORPNET was treated as the trusted corporate workstation zone but was not given unrestricted access to every internal network.
+
+The Windows workstation required:
+
+- firewall administration
+- DNS
+- Internet connectivity
+- access to approved internal server services
+
+---
+
+## CORPNET → OPNsense HTTPS
+
+Purpose:
+
+Allow the administrative workstation to access the OPNsense web interface.
+
+Source:
+
+`ADMIN_WORKSTATION`
+
+Destination:
+
+`This Firewall`
+
+Protocol:
+
+`TCP`
+
+Destination port:
+
+`443`
+
 Action:
 
 `ALLOW`
 
-Validated:
-
-`PASS`
+This provided controlled firewall administration without exposing the management interface to REDNET.
 
 ---
 
-## CORPNET → AD Kerberos
+## CORPNET → OPNsense DNS
 
 Source:
 
@@ -418,27 +300,27 @@ Source:
 
 Destination:
 
-`LAB-DC-01`
+`This Firewall`
 
 Protocol:
 
-`TCP`
+`TCP/UDP`
 
-Port:
+Destination port:
 
-`88`
+`DNS_PORT`
 
 Action:
 
 `ALLOW`
 
-Validated:
+Purpose:
 
-`PASS`
+Provide DNS resolution for the corporate workstation before Active Directory DNS was introduced.
 
 ---
 
-## CORPNET → AD LDAP
+## CORPNET → SERVERNET Administration
 
 Source:
 
@@ -446,29 +328,336 @@ Source:
 
 Destination:
 
-`LAB-DC-01`
+`UBUNTU_SERVER`
 
 Protocol:
 
 `TCP`
 
-Port:
+Destination ports:
 
-`389`
+`SERVER_ADMIN_PORTS`
+
+Equivalent ports:
+
+- SSH `22`
+- HTTPS `443`
 
 Action:
 
 `ALLOW`
 
-Validated:
+Purpose:
 
-`PASS`
+Permit the Windows administration workstation to manage or access approved services on the internal Ubuntu server.
 
 ---
 
-# CORPNET to SOCNET
+## CORPNET → REDNET
 
-## Wazuh Agent Communication
+Traffic from the corporate network to the offensive network was restricted.
+
+A broad private-network policy prevented unnecessary access to Kali.
+
+Final validation during the early segmented phase confirmed:
+
+`LAB-WIN-01 → LAB-KALI-01`
+
+was blocked where no explicit exception existed.
+
+---
+
+## CORPNET Internet Access
+
+CORPNET retained approved outbound Internet access through OPNsense.
+
+This was required for:
+
+- updates
+- software downloads
+- general connectivity
+- security tools
+
+The endpoint did not require a direct VirtualBox NAT adapter once OPNsense routing became authoritative.
+
+---
+
+# Initial REDNET Rules
+
+REDNET was deliberately treated as the least-trusted zone.
+
+The purpose was to allow controlled attacker activity without providing unrestricted access to enterprise-style assets.
+
+---
+
+## REDNET → OPNsense DNS
+
+Source:
+
+`REDNET`
+
+Destination:
+
+`This Firewall`
+
+Protocol:
+
+`TCP/UDP`
+
+Destination port:
+
+`DNS_PORT`
+
+Action:
+
+`ALLOW`
+
+Purpose:
+
+Permit name resolution for Kali.
+
+---
+
+## REDNET → SERVERNET Controlled Testing
+
+Source:
+
+`REDNET`
+
+Destination:
+
+`UBUNTU_SERVER`
+
+Action:
+
+`ALLOW` only for approved testing paths.
+
+This early rule allowed controlled offensive exercises against the Linux server.
+
+Examples included:
+
+- SSH testing
+- Nmap enumeration
+- fail2ban validation
+- Hydra testing
+
+This represented the first deliberate attacker-versus-server path in the segmented design.
+
+---
+
+## REDNET → CORPNET
+
+Traffic from Kali to the corporate Windows workstation was blocked unless specifically required for a controlled test.
+
+This created a meaningful separation between:
+
+- attacker infrastructure
+- corporate endpoint infrastructure
+
+---
+
+## REDNET → OPNsense Management
+
+Firewall-management access from REDNET was explicitly blocked.
+
+Purpose:
+
+Prevent the offensive workstation from reaching the OPNsense administrative interface.
+
+This was an important early least-privilege control.
+
+---
+
+## REDNET Internet Access
+
+Kali retained approved outbound Internet access through OPNsense for:
+
+- package updates
+- security tools
+- research
+- controlled external connectivity
+
+---
+
+# Initial SERVERNET Rules
+
+SERVERNET contained the internal Ubuntu server.
+
+The zone was protected from unnecessary access while retaining operational connectivity.
+
+---
+
+## SERVERNET → OPNsense DNS
+
+Source:
+
+`SERVERNET`
+
+Destination:
+
+`This Firewall`
+
+Protocol:
+
+`TCP/UDP`
+
+Destination port:
+
+`DNS_PORT`
+
+Action:
+
+`ALLOW`
+
+---
+
+## SERVERNET → OPNsense NTP
+
+Source:
+
+`SERVERNET`
+
+Destination:
+
+`This Firewall`
+
+Protocol:
+
+`UDP`
+
+Destination port:
+
+`NTP_PORT`
+
+Action:
+
+`ALLOW`
+
+---
+
+## SERVERNET → Internet
+
+Approved outbound Internet access was permitted where required for:
+
+- package management
+- security updates
+- software installation
+
+---
+
+## SERVERNET → CORPNET
+
+Unsolicited server-to-workstation communication was blocked unless specifically required.
+
+This reduced lateral-movement opportunities.
+
+---
+
+## SERVERNET → REDNET
+
+Unsolicited server-to-attacker-network communication was blocked.
+
+This prevented the protected server from freely initiating sessions into REDNET.
+
+---
+
+# Initial Segmentation Validation
+
+The early OPNsense segmentation phase validated several important paths.
+
+Examples included:
+
+- Windows → OPNsense HTTPS allowed
+- Windows → OPNsense DNS allowed
+- Windows → Internet allowed
+- Windows → Ubuntu SSH allowed
+- Windows → Kali blocked
+- Kali → OPNsense DNS allowed
+- Kali → Internet allowed
+- Kali → approved Ubuntu testing services allowed
+- Kali → Windows blocked
+- REDNET → OPNsense management blocked
+- SERVERNET → CORPNET restricted
+- SERVERNET → REDNET restricted
+
+This represented the first major transition from a flat home lab into an enterprise-style security environment.
+
+---
+
+# Legacy Default Rules
+
+During the initial OPNsense configuration, default LAN-style rules existed from the original installation.
+
+As the zone-specific policy matured, these broad legacy rules were disabled or superseded.
+
+The objective was to ensure that traffic was controlled by explicit zone policy rather than permissive default LAN rules.
+
+---
+
+# Phase 3 — SOCNET and Wazuh Integration
+
+The next major architecture phase introduced centralized monitoring.
+
+`LAB-SIEM-01`
+
+was deployed in:
+
+`SOCNET — 10.10.40.0/24`
+
+with address:
+
+`10.10.40.10`
+
+---
+
+# Wazuh Firewall Requirements
+
+Wazuh agent communication required:
+
+`TCP/1514`
+
+Agent enrollment required:
+
+`TCP/1515`
+
+Endpoint zones were therefore granted narrow access to the Wazuh server.
+
+---
+
+# Wazuh Server Alias
+
+Alias:
+
+`WAZUH_SERVER`
+
+Address:
+
+`10.10.40.10`
+
+Purpose:
+
+Provide a single readable destination for endpoint telemetry rules.
+
+---
+
+# Wazuh Agent Ports Alias
+
+Alias:
+
+`WAZUH_AGENT_PORTS`
+
+Ports:
+
+- `1514`
+- `1515`
+
+Purpose:
+
+Represent Wazuh communication and enrollment services.
+
+---
+
+# CORPNET → SOCNET Wazuh
 
 Source:
 
@@ -482,9 +671,9 @@ Protocol:
 
 `TCP`
 
-Port:
+Destination:
 
-`1514`
+`1514/1515` where required
 
 Action:
 
@@ -492,19 +681,654 @@ Action:
 
 Purpose:
 
-Permit Windows endpoint telemetry to reach Wazuh.
-
-Validated:
-
-`PASS`
+Permit Windows endpoint telemetry and enrollment.
 
 ---
 
-# CORPNET to DMZ
+# SERVERNET → SOCNET Wazuh
 
-## Restricted Administrative SSH
+Source:
 
-Rule description:
+`SERVERNET`
+
+Destination:
+
+`WAZUH_SERVER`
+
+Protocol:
+
+`TCP`
+
+Destination:
+
+`1514/1515` where required
+
+Action:
+
+`ALLOW`
+
+Purpose:
+
+Permit Linux endpoint monitoring.
+
+---
+
+# Endpoint Monitoring Principle
+
+SOCNET was not made broadly reachable.
+
+Only the required security-monitoring services were exposed to endpoint zones.
+
+This preserved separation while allowing centralized telemetry.
+
+---
+
+# Phase 4 — OPNsense Firewall Logging to Wazuh
+
+OPNsense itself was later integrated into the monitoring architecture.
+
+Firewall events were forwarded to:
+
+`LAB-SIEM-01`
+
+This allowed denied and suspicious inter-zone traffic to be investigated from Wazuh.
+
+A firewall-correlation rule was successfully validated:
+
+`Wazuh Rule 87702`
+
+This represented an important transition:
+
+the firewall was no longer only an enforcement device.
+
+It also became a telemetry source.
+
+---
+
+# Phase 5 — Suricata IDS Integration
+
+Suricata was installed on OPNsense after the firewall and Wazuh environment were already operational.
+
+Primary monitored interface:
+
+`em2`
+
+This corresponds to REDNET traffic.
+
+---
+
+# Suricata Event Forwarding
+
+Suricata events were forwarded toward SOCNET.
+
+The final dedicated path used:
+
+`UDP/5514`
+
+Destination:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+The SIEM receives the traffic using rsyslog.
+
+Events are written to:
+
+`/var/log/suricata/eve.json`
+
+Wazuh monitors this file using JSON log collection.
+
+---
+
+# Suricata Validation
+
+A controlled detection produced:
+
+`Signature ID 2100498`
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+The event was subsequently processed by Wazuh:
+
+`Rule 86601`
+
+This proved the network detection path from:
+
+`OPNsense → SOCNET → Wazuh`
+
+---
+
+# Phase 6 — ADNET Introduction
+
+Active Directory was introduced after the initial four-zone architecture was already functional.
+
+A fifth protected network was created:
+
+`ADNET — 10.10.50.0/24`
+
+Gateway:
+
+`10.10.50.1`
+
+Domain Controller:
+
+`LAB-DC-01 — 10.10.50.10`
+
+Domain:
+
+`cyberlab.internal`
+
+---
+
+# Active Directory Host Alias
+
+Alias:
+
+`LAB_DC_01`
+
+Address:
+
+`10.10.50.10`
+
+Purpose:
+
+Represent the Domain Controller in firewall policy.
+
+---
+
+# Why Active Directory Required More Than Three Ports
+
+Although final connectivity sampling directly validated:
+
+- DNS `53`
+- Kerberos `88`
+- LDAP `389`
+
+full Active Directory operation requires additional services.
+
+The firewall rules therefore supported the broader Active Directory service set rather than limiting domain connectivity only to the three sampled validation ports.
+
+---
+
+# CORPNET → LAB-DC-01 TCP Services
+
+The Active Directory TCP rule set included:
+
+- TCP `53` — DNS
+- TCP `88` — Kerberos
+- TCP `135` — RPC Endpoint Mapper
+- TCP `389` — LDAP
+- TCP `445` — SMB
+- TCP `464` — Kerberos password operations
+- TCP `3268` — Global Catalog
+- TCP `49152:65535` — Dynamic RPC range
+
+These ports supported:
+
+- domain join
+- authentication
+- Group Policy
+- SYSVOL
+- directory queries
+- RPC-based domain operations
+- Kerberos
+- Global Catalog access
+
+---
+
+# CORPNET → LAB-DC-01 UDP Services
+
+The Active Directory UDP rule set included:
+
+- UDP `53` — DNS
+- UDP `88` — Kerberos
+- UDP `123` — NTP
+- UDP `389` — LDAP
+- UDP `464` — Kerberos password operations
+
+These rules provided the additional datagram services required by Windows domain operation.
+
+---
+
+# Active Directory Firewall Objective
+
+The design intentionally avoided simply allowing:
+
+`CORPNET → ADNET Any`
+
+Instead, required domain services were explicitly permitted to:
+
+`LAB-DC-01`
+
+This preserved the principle of least privilege while allowing normal domain functionality.
+
+---
+
+# ADNET → SOCNET Wazuh
+
+The Domain Controller required security telemetry access.
+
+Source:
+
+`ADNET`
+
+Destination:
+
+`WAZUH_SERVER`
+
+Protocol:
+
+`TCP`
+
+Ports:
+
+- `1514`
+- `1515`
+
+Action:
+
+`ALLOW`
+
+Purpose:
+
+Permit Wazuh monitoring and enrollment.
+
+---
+
+# REDNET → ADNET
+
+REDNET was not granted normal access to Active Directory.
+
+A later final validation explicitly confirmed:
+
+`REDNET → LAB-DC-01 LDAP/389`
+
+was blocked.
+
+This protected the identity infrastructure from direct attacker-network access.
+
+---
+
+# Active Directory Validation
+
+Firewall policy successfully supported:
+
+- domain join
+- DNS
+- Kerberos
+- LDAP
+- Group Policy
+- SYSVOL
+- domain authentication
+- Wazuh telemetry
+
+Final targeted connectivity tests confirmed:
+
+- DNS `53` — allowed
+- Kerberos `88` — allowed
+- LDAP `389` — allowed
+
+Domain Controller health checks also passed.
+
+---
+
+# Phase 7 — DMZ Introduction
+
+The DMZ was the final major network zone introduced.
+
+Network:
+
+`10.10.60.0/24`
+
+Gateway:
+
+`10.10.60.1`
+
+Primary server:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+The server runs:
+
+- Ubuntu Server
+- Nginx
+- Wazuh Agent
+
+---
+
+# DMZ Aliases
+
+## `LAB_DMZ_01`
+
+Address:
+
+`10.10.60.10`
+
+Purpose:
+
+Represent the DMZ web server.
+
+---
+
+## `HTTP_HTTPS_PORTS`
+
+Ports:
+
+- `80`
+- `443`
+
+Purpose:
+
+Approved outbound web traffic.
+
+---
+
+# Final DMZ Rule Order
+
+The final DMZ interface contained the following important rules in order:
+
+1. `ALLOW - DMZ to OPNsense DNS`
+2. `ALLOW - DMZ to OPNsense NTP`
+3. `ALLOW - DMZ to Wazuh Agent Services`
+4. `BLOCK - DMZ to Unauthorized Private Networks`
+5. `ALLOW - DMZ HTTP HTTPS Outbound`
+
+The order is important because Wazuh resides inside a private network and therefore requires a specific exception before the broad private-network block.
+
+---
+
+# DMZ → OPNsense DNS
+
+Rule:
+
+`ALLOW - DMZ to OPNsense DNS`
+
+Configuration:
+
+    Action: Pass
+    Interface: DMZ
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: TCP/UDP
+    Source: DMZ network
+    Destination: This Firewall
+    Destination Port: DNS_PORT
+    Logging: Disabled
+
+Purpose:
+
+Permit DNS resolution through OPNsense.
+
+---
+
+# DMZ → OPNsense NTP
+
+Rule:
+
+`ALLOW - DMZ to OPNsense NTP`
+
+Configuration:
+
+    Action: Pass
+    Interface: DMZ
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: UDP
+    Source: DMZ network
+    Destination: This Firewall
+    Destination Port: NTP_PORT
+    Logging: Disabled
+
+Purpose:
+
+Permit approved time synchronization.
+
+---
+
+# DMZ → Wazuh Agent Services
+
+Rule:
+
+`ALLOW - DMZ to Wazuh Agent Services`
+
+Configuration:
+
+    Action: Pass
+    Interface: DMZ
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: TCP
+    Source: DMZ network
+    Destination: WAZUH_SERVER
+    Destination Port: WAZUH_AGENT_PORTS
+    Logging: Disabled
+
+Equivalent ports:
+
+- TCP `1514`
+- TCP `1515`
+
+Purpose:
+
+Permit Wazuh monitoring and enrollment.
+
+Connectivity was tested before installing the agent.
+
+Both ports were reachable.
+
+---
+
+# DMZ → Unauthorized Private Networks
+
+Rule:
+
+`BLOCK - DMZ to Unauthorized Private Networks`
+
+Configuration:
+
+    Action: Block
+    Interface: DMZ
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: Any
+    Source: DMZ network
+    Destination: PRIVATE_NETS
+    Logging: Enabled
+
+Purpose:
+
+Prevent a compromised DMZ server from freely accessing protected enterprise systems.
+
+Validated examples:
+
+- DMZ → CORPNET SMB/445 blocked
+- DMZ → ADNET LDAP/389 blocked
+
+---
+
+# DMZ HTTP/HTTPS Outbound
+
+Rule:
+
+`ALLOW - DMZ HTTP HTTPS Outbound`
+
+Configuration:
+
+    Action: Pass
+    Interface: DMZ
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: TCP
+    Source: DMZ network
+    Destination: Any
+    Destination Port: HTTP_HTTPS_PORTS
+    Logging: Disabled
+
+Ports:
+
+- TCP `80`
+- TCP `443`
+
+Purpose:
+
+Permit:
+
+- package updates
+- Wazuh package downloads
+- software installation
+- approved HTTPS connectivity
+
+A later HTTPS validation returned:
+
+`HTTP/2 403`
+
+which still proved successful DNS, routing, TCP, TLS, and remote-server connectivity.
+
+---
+
+# Unauthorized DMZ Outbound Traffic
+
+An unapproved outbound TCP connection from the DMZ was observed being blocked by:
+
+`Default deny / state violation rule`
+
+This confirmed that the DMZ had not been given unrestricted outbound Internet access.
+
+---
+
+# Phase 8 — REDNET to DMZ Web Exposure
+
+The DMZ required an intentionally exposed service for controlled web-security testing.
+
+A specific REDNET rule was created.
+
+Rule:
+
+`ALLOW - REDNET to LAB-DMZ-01 HTTP`
+
+Configuration:
+
+    Action: Pass
+    Interface: REDNET
+    Direction: In
+    TCP/IP Version: IPv4
+    Protocol: TCP
+    Source: REDNET network
+    Destination: LAB_DMZ_01
+    Destination Port: HTTP (80)
+    Logging: Enabled
+
+Purpose:
+
+Permit Kali to access the Nginx service.
+
+---
+
+# REDNET Web Rule Position
+
+The HTTP rule had to appear above:
+
+`BLOCK - REDNET to Unauthorized Private Networks`
+
+Correct order:
+
+    ALLOW - REDNET to LAB-DMZ-01 HTTP
+    BLOCK - REDNET to Unauthorized Private Networks
+
+---
+
+# Important OPNsense Apply Lesson
+
+During the REDNET-to-DMZ deployment, the allow rule had been correctly created and positioned.
+
+However:
+
+`curl http://10.10.60.10`
+
+continued timing out.
+
+OPNsense Live View showed the traffic still matching:
+
+`BLOCK - REDNET to Unauthorized Private`
+
+The cause was not the rule definition.
+
+The pending firewall configuration had not yet been applied.
+
+The red:
+
+`Apply`
+
+button was still visible.
+
+After applying the configuration, the same request returned:
+
+`HTTP/1.1 200 OK`
+
+This established an important operational rule:
+
+**Saving a firewall rule is not enough. Confirm that pending OPNsense changes are applied.**
+
+---
+
+# REDNET → DMZ SSH
+
+No SSH exception was created for REDNET.
+
+Test:
+
+    nc -zv -w 3 10.10.60.10 22
+
+Result:
+
+    Connection timed out
+
+Firewall logging showed the traffic blocked by:
+
+`BLOCK - REDNET to Unauthorized Private Networks`
+
+This confirmed that Kali could test the web service without gaining administrative access to the DMZ server.
+
+---
+
+# Phase 9 — Restricted CORPNET to DMZ Administration
+
+Typing long commands directly into the Ubuntu VirtualBox console became inefficient.
+
+A legitimate remote-administration path was therefore required.
+
+Initial test from:
+
+`LAB-WIN-01`
+
+to:
+
+`LAB-DMZ-01:22`
+
+timed out.
+
+This was expected because CORPNET did not yet have an approved SSH path into the DMZ.
+
+---
+
+# Administrative Host Alias
+
+Existing alias:
+
+`ADMIN_WORKSTATION`
+
+Address:
+
+`10.10.20.20`
+
+This alias was reused instead of creating a broad CORPNET permission.
+
+---
+
+# Restricted DMZ SSH Rule
+
+Rule:
 
 `ALLOW - ADMIN_WORKSTATION to LAB-DMZ-01 SSH`
 
@@ -524,681 +1348,303 @@ Configuration:
 
 Purpose:
 
-Permit only the approved administrative workstation to manage the DMZ server.
-
-Validated:
-
-`PASS`
+Permit the approved Windows workstation to administer the DMZ.
 
 ---
 
-## Broad CORPNET Block
+# CORPNET DMZ Rule Position
 
-The SSH exception is positioned above the broad CORPNET private-network block.
+The rule was positioned above:
+
+`BLOCK - CORPNET to Unauthorized Private Networks`
 
 Correct order:
 
     ALLOW - ADMIN_WORKSTATION to LAB-DMZ-01 SSH
     BLOCK - CORPNET to Unauthorized Private Networks
 
-This ensures the narrow exception works without weakening general segmentation.
+After applying the rule, SSH from:
+
+`LAB-WIN-01`
+
+to:
+
+`LAB-DMZ-01`
+
+succeeded.
 
 ---
 
-# SERVERNET Rules
+# Why ADNET Was Not Given DMZ SSH
 
-## Purpose
+Using:
 
-SERVERNET contains:
+`LAB-DC-01`
 
-`LAB-UBUNTU-01 — 10.10.30.30`
+as an SSH jump host was considered but rejected.
 
-The server requires SIEM connectivity but should not have unrestricted access to other zones.
+The Domain Controller is critical identity infrastructure.
 
----
+Allowing general-purpose DMZ administration from the DC would:
 
-## SERVERNET → SOCNET Wazuh
+- increase attack surface
+- mix identity and administration roles
+- introduce unnecessary trust
+- weaken architectural realism
 
-Source:
+Final validation confirmed:
 
-`SERVERNET`
+`ADNET → DMZ SSH/22`
 
-Destination:
-
-`WAZUH_SERVER`
-
-Protocol:
-
-`TCP`
-
-Port:
-
-`1514`
-
-Action:
-
-`ALLOW`
-
-Validated:
-
-`PASS`
+was blocked.
 
 ---
 
-## SERVERNET → CORPNET SMB
+# Phase 10 — DMZ SSH Host Hardening
 
-Source:
+The firewall path was reinforced by host-level SSH controls.
 
-`SERVERNET`
+Final effective SSH configuration on `LAB-DMZ-01`:
 
-Destination:
+    PermitRootLogin no
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
 
-`CORPNET`
+Key-only SSH from:
 
-Protocol:
+`LAB-WIN-01`
 
-`TCP`
+was validated successfully.
 
-Port:
+Password-only SSH was explicitly tested and rejected.
 
-`445`
+The result is defense in depth:
 
-Expected:
-
-`BLOCK`
-
-Validated:
-
-`PASS`
+    OPNsense source restriction
+        +
+    SSH key-only authentication
 
 ---
 
-## SERVERNET → DMZ SSH
+# Final REDNET Rules
 
-Source:
+The authoritative final REDNET behaviour includes:
 
-`SERVERNET`
+## Approved
 
-Destination:
+    REDNET → DMZ HTTP/80
+
+Purpose:
+
+Controlled offensive web testing.
+
+## Blocked
+
+    REDNET → DMZ SSH/22
+    REDNET → CORPNET SMB/445
+    REDNET → ADNET LDAP/389
+
+## Required Infrastructure
+
+REDNET retains required DNS and approved Internet access through OPNsense.
+
+## Management
+
+REDNET is not an approved OPNsense management source.
+
+---
+
+# Final CORPNET Rules
+
+CORPNET provides normal workstation functionality while remaining segmented.
+
+## OPNsense Administration
+
+Approved administrative access from:
+
+`ADMIN_WORKSTATION`
+
+where required.
+
+## Active Directory
+
+CORPNET can reach `LAB-DC-01` using the approved domain-service rules.
+
+TCP services include:
+
+- `53`
+- `88`
+- `135`
+- `389`
+- `445`
+- `464`
+- `3268`
+- `49152:65535`
+
+UDP services include:
+
+- `53`
+- `88`
+- `123`
+- `389`
+- `464`
+
+## Wazuh
+
+CORPNET → SOCNET Wazuh communication is allowed.
+
+## DMZ Administration
+
+Only:
+
+`ADMIN_WORKSTATION`
+
+may access:
 
 `LAB_DMZ_01`
 
-Protocol:
+using SSH TCP/22.
 
-`TCP`
+## Broad Private-Network Policy
 
-Port:
-
-`22`
-
-Expected:
-
-`BLOCK`
-
-Validated:
-
-`PASS`
+Unauthorized CORPNET access remains restricted by broad private-network rules.
 
 ---
 
-# SOCNET Rules
+# Final SERVERNET Rules
 
-## Purpose
+SERVERNET retains only the communication needed for its role.
 
-SOCNET contains:
+## Allowed
 
-`LAB-SIEM-01 — 10.10.40.10`
+    SERVERNET → SOCNET Wazuh/1514
+    SERVERNET → approved DNS/NTP
+    SERVERNET → approved Internet access
 
-SOCNET is the monitoring and security-analysis zone.
+## Restricted
 
-It receives:
-
-- Wazuh endpoint telemetry
-- OPNsense firewall logs
-- Suricata events
+    SERVERNET → CORPNET SMB/445
+    SERVERNET → DMZ SSH/22
+    SERVERNET → REDNET unsolicited access
 
 ---
 
-# Wazuh Communication
+# Final SOCNET Rules
 
-Monitored systems connect to:
+SOCNET is the central monitoring destination.
 
-`LAB-SIEM-01`
+Approved telemetry includes:
 
-using:
+    CORPNET → Wazuh TCP/1514
+    SERVERNET → Wazuh TCP/1514
+    ADNET → Wazuh TCP/1514
+    DMZ → Wazuh TCP/1514
 
-`TCP/1514`
-
-Agent enrollment may use:
+Enrollment may use:
 
 `TCP/1515`
 
-Approved monitored systems include:
-
-- `LAB-WIN-01`
-- `LAB-UBUNTU-01`
-- `LAB-DC-01`
-- `LAB-DMZ-01`
-
-During final validation all four agents were Active.
-
----
-
-# Suricata Remote Logging
-
-Suricata telemetry from OPNsense is forwarded to:
-
-`LAB-SIEM-01`
-
-using:
+Suricata telemetry reaches the SIEM using:
 
 `UDP/5514`
 
-The SIEM writes the events to:
-
-`/var/log/suricata/eve.json`
-
-Wazuh then ingests the file as JSON.
+SOCNET is not intended to become a general-purpose transit network.
 
 ---
 
-# ADNET Rules
+# Final ADNET Rules
 
-## Purpose
+ADNET contains the Domain Controller and identity infrastructure.
 
-ADNET contains:
+## Allowed
 
-`LAB-DC-01 — 10.10.50.10`
+    CORPNET → LAB-DC-01 approved AD TCP services
+    CORPNET → LAB-DC-01 approved AD UDP services
+    ADNET → SOCNET Wazuh/1514
 
-This is critical identity infrastructure.
+## Restricted
 
----
+    REDNET → ADNET LDAP/389
+    ADNET → DMZ SSH/22
 
-## ADNET → SOCNET Wazuh
-
-Source:
-
-`ADNET`
-
-Destination:
-
-`WAZUH_SERVER`
-
-Protocol:
-
-`TCP`
-
-Port:
-
-`1514`
-
-Action:
-
-`ALLOW`
-
-Validated:
-
-`PASS`
+The Domain Controller remains isolated from unnecessary attacker and management paths.
 
 ---
 
-## ADNET → DMZ SSH
+# Final DMZ Rules
 
-Source:
+Final DMZ rule order:
 
-`ADNET`
+    1. ALLOW - DMZ to OPNsense DNS
+    2. ALLOW - DMZ to OPNsense NTP
+    3. ALLOW - DMZ to Wazuh Agent Services
+    4. BLOCK - DMZ to Unauthorized Private Networks
+    5. ALLOW - DMZ HTTP HTTPS Outbound
 
-Destination:
+Additional inbound policies include:
 
-`LAB_DMZ_01`
-
-Protocol:
-
-`TCP`
-
-Port:
-
-`22`
-
-Expected:
-
-`BLOCK`
-
-Validated:
-
-`PASS`
-
-Purpose:
-
-Prevent the Domain Controller from being used as a general-purpose DMZ management host.
+    REDNET → LAB-DMZ-01 HTTP/80                  ALLOW
+    REDNET → LAB-DMZ-01 SSH/22                   BLOCK
+    ADMIN_WORKSTATION → LAB-DMZ-01 SSH/22       ALLOW
+    ADNET → LAB-DMZ-01 SSH/22                    BLOCK
 
 ---
 
-# DMZ Rules
+# Firewall Logging Strategy
 
-## Purpose
+Not every permitted connection is logged.
 
-The DMZ contains:
+Logging is concentrated on security-relevant boundaries.
 
-`LAB-DMZ-01 — 10.10.60.10`
+Examples include:
 
-The server runs:
+- REDNET private-network violations
+- DMZ private-network violations
+- restricted administrative SSH
+- attack-path testing
+- significant block rules
 
-- Ubuntu Server
-- Nginx
-- Wazuh Agent
-
-The DMZ is designed to expose selected services while remaining isolated from protected enterprise networks.
-
----
-
-# DMZ to OPNsense DNS
-
-Rule description:
-
-`ALLOW - DMZ to OPNsense DNS`
-
-Configuration:
-
-    Action: Pass
-    Interface: DMZ
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: TCP/UDP
-    Source: DMZ network
-    Destination: This Firewall
-    Destination Port: DNS_PORT
-    Logging: Disabled
-
-Purpose:
-
-Allow DNS resolution through OPNsense.
+This provides useful security evidence without creating unnecessary noise.
 
 ---
 
-# DMZ to OPNsense NTP
+# OPNsense Live View
 
-Rule description:
+OPNsense Live View was repeatedly used to determine which rule actually processed traffic.
 
-`ALLOW - DMZ to OPNsense NTP`
+This was important during:
 
-Configuration:
+- REDNET → DMZ HTTP troubleshooting
+- REDNET → DMZ SSH validation
+- DMZ → CORPNET validation
+- inter-zone deny testing
 
-    Action: Pass
-    Interface: DMZ
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: UDP
-    Source: DMZ network
-    Destination: This Firewall
-    Destination Port: NTP_PORT
-    Logging: Disabled
+Example blocked flow:
 
-Purpose:
+    Source:
+    10.10.10.10
 
-Allow approved time synchronization.
+    Destination:
+    10.10.60.10:22
 
----
+Result:
 
-# DMZ to Wazuh
+Blocked by:
 
-Rule description:
+`BLOCK - REDNET to Unauthorized Private Networks`
 
-`ALLOW - DMZ to Wazuh Agent Services`
-
-Configuration:
-
-    Action: Pass
-    Interface: DMZ
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: TCP
-    Source: DMZ network
-    Destination: WAZUH_SERVER
-    Destination Port: WAZUH_AGENT_PORTS
-    Logging: Disabled
-
-Ports:
-
-    1514
-    1515
-
-Purpose:
-
-Permit Wazuh telemetry and enrollment.
-
-Validated:
-
-`PASS`
-
----
-
-# DMZ Private-Network Block
-
-Rule description:
-
-`BLOCK - DMZ to Unauthorized Private Networks`
-
-Configuration:
-
-    Action: Block
-    Interface: DMZ
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: Any
-    Source: DMZ network
-    Destination: PRIVATE_NETS
-    Logging: Enabled
-
-Purpose:
-
-Prevent a compromised DMZ server from freely reaching protected networks.
-
-Validated examples:
-
-    DMZ → CORPNET SMB/445   BLOCK
-    DMZ → ADNET LDAP/389    BLOCK
-
-Status:
-
-**PASS**
-
----
-
-# DMZ HTTP and HTTPS Outbound
-
-Rule description:
-
-`ALLOW - DMZ HTTP HTTPS Outbound`
-
-Configuration:
-
-    Action: Pass
-    Interface: DMZ
-    Direction: In
-    TCP/IP Version: IPv4
-    Protocol: TCP
-    Source: DMZ network
-    Destination: Any
-    Destination Port: HTTP_HTTPS_PORTS
-    Logging: Disabled
-
-Ports:
-
-    80
-    443
-
-Purpose:
-
-Permit:
-
-- package management
-- security updates
-- approved HTTPS communication
-
-Validated:
-
-`PASS`
-
-A test to:
-
-`https://packages.wazuh.com`
-
-returned:
-
-`HTTP/2 403`
-
-The 403 response still confirmed successful DNS, routing, TCP/443, TLS, and remote-server reachability.
-
----
-
-# DMZ Rule Order
-
-The final DMZ policy follows this general order:
-
-    ALLOW - DMZ to OPNsense DNS
-    ALLOW - DMZ to OPNsense NTP
-    ALLOW - DMZ to Wazuh Agent Services
-    BLOCK - DMZ to Unauthorized Private Networks
-    ALLOW - DMZ HTTP HTTPS Outbound
-
-This ordering is intentional.
-
-The Wazuh exception must occur before the broad private-network block because SOCNET is itself a private network.
-
----
-
-# Firewall Logging
-
-Logging is enabled primarily where it provides security value.
-
-Important logged rules include:
-
-- REDNET private-network blocks
-- DMZ private-network blocks
-- restricted SSH administration
-- significant security-zone boundary violations
-
-This reduces unnecessary log volume while preserving useful investigation data.
-
----
-
-# OPNsense Live View Validation
-
-OPNsense Live View was used extensively during troubleshooting and validation.
-
-Examples included confirming:
-
-    10.10.10.10 → 10.10.60.10:22
-
-was blocked by:
-
-`BLOCK - REDNET to Unauthorized Private`
-
-and confirming:
+Another validated blocked flow involved:
 
     10.10.60.10 → 10.10.20.20
 
-was blocked by:
+which was blocked by:
 
 `BLOCK - DMZ to Unauthorized Private Networks`
 
-Live View proved particularly useful when:
-
-- service state looked healthy
-- routing appeared correct
-- connectivity still failed
-
-The firewall logs identified which rule actually processed the packet.
-
 ---
 
-# Default Deny Behaviour
-
-Traffic not matching an approved allow rule is denied.
-
-An example was a DMZ outbound TCP connection using an unapproved port.
-
-The traffic was blocked by:
-
-`Default deny / state violation rule`
-
-This demonstrated that the DMZ did not receive unrestricted outbound access.
-
----
-
-# Firewall Telemetry to Wazuh
-
-OPNsense firewall events were integrated into Wazuh during an earlier project phase.
-
-A custom firewall-correlation detection was validated using:
-
-`Wazuh Rule 87702`
-
-This established OPNsense as both:
-
-- an enforcement system
-- a telemetry source
-
----
-
-# Suricata on OPNsense
-
-Suricata was later introduced as an additional network-security layer.
-
-Primary monitored interface:
-
-`em2`
-
-This interface corresponds to REDNET traffic.
-
-Suricata provides:
-
-- IDS signatures
-- EVE JSON
-- network detection telemetry
-- attack visibility
-
----
-
-# Suricata Validation
-
-A controlled REDNET-to-DMZ HTTP test produced the response:
-
-    uid=0(root) gid=0(root) groups=0(root)
-
-Suricata detected:
-
-    Signature ID: 2100498
-    Signature: GPL ATTACK_RESPONSE id check returned root
-    Category: Potentially Bad Traffic
-    Severity: 2
-
-The event showed:
-
-    Source: 10.10.60.10:80
-    Destination: 10.10.10.10
-    Direction: to_client
-
-This proved that Suricata could inspect the REDNET ↔ DMZ traffic path.
-
----
-
-# Suricata to Wazuh
-
-The IDS event was forwarded to the SIEM.
-
-The telemetry path is:
-
-    LAB-FW-01
-    Suricata
-        |
-        v
-    UDP/5514
-        |
-        v
-    LAB-SIEM-01
-        |
-        v
-    /var/log/suricata/eve.json
-        |
-        v
-    Wazuh
-
-The controlled event generated:
-
-`Wazuh Rule 86601`
-
-Description:
-
-`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
-
----
-
-# Active Directory Firewall Development
-
-The Active Directory environment was introduced after the initial segmented network had already been established.
-
-Adding ADNET required new firewall decisions.
-
-CORPNET needed access to required domain services while REDNET and unrelated zones remained restricted.
-
-This phase introduced and validated:
-
-- DNS
-- Kerberos
-- LDAP
-- Wazuh monitoring
-- controlled AD isolation
-
-The final design keeps the Domain Controller in its own security zone rather than sharing CORPNET.
-
----
-
-# DMZ Firewall Development
-
-The DMZ was introduced after the Active Directory and core monitoring architecture had already been completed.
-
-The firewall was extended with:
-
-- a new DMZ interface
-- DMZ-specific aliases
-- DNS and NTP access
-- Wazuh access
-- broad internal deny policy
-- approved outbound web access
-- REDNET HTTP exposure
-- restricted CORPNET SSH administration
-
-This represented the final major network expansion.
-
----
-
-# Firewall Rule Change Workflow
-
-Throughout the project, significant firewall changes followed a controlled workflow.
-
-    1. Take VirtualBox snapshot
-    2. Make one planned firewall change
-    3. Save rule
-    4. Confirm rule order
-    5. Apply Changes
-    6. Generate controlled test traffic
-    7. Review OPNsense logs
-    8. Verify endpoint/service behaviour
-    9. Confirm Wazuh visibility where applicable
-    10. Document result
-
-This approach reduced troubleshooting complexity and protected the working environment.
-
----
-
-# Important Troubleshooting Lesson: Apply Changes
-
-One of the most important OPNsense lessons occurred during REDNET-to-DMZ HTTP configuration.
-
-The HTTP rule had:
-
-- correct source
-- correct destination
-- correct port
-- correct rule order
-
-but traffic continued to be blocked.
-
-The cause was simple:
-
-the OPNsense Apply button had not been clicked.
-
-After applying the configuration, traffic succeeded immediately.
-
-The resulting operational rule became:
-
-**Always verify that pending firewall changes have actually been applied.**
-
----
-
-# Final Validation Matrix
+# Final Firewall Validation Matrix
 
 | Source | Destination | Service | Expected | Result |
 |---|---|---|---|---|
@@ -1223,89 +1669,152 @@ The resulting operational rule became:
 
 ---
 
-# Final Firewall Architecture
+# Final Rule Philosophy
 
-The completed rule model can be summarized as:
+The final rule architecture follows a simple principle:
 
-    REDNET
-      |
-      | Controlled attack paths
-      v
+**Permit legitimate business and security-monitoring requirements, deny unnecessary inter-zone access, and preserve visibility into important security boundaries.**
 
-    +----------------------+
-    |      LAB-FW-01       |
-    |       OPNsense       |
-    | Firewall / Routing   |
-    |    Suricata IDS      |
-    +----------------------+
+The environment therefore avoids broad rules such as:
 
-      |      |      |      |      |
-      v      v      v      v      v
+    REDNET → Any
+    CORPNET → Any
+    DMZ → PRIVATE_NETS
+    ADNET → Any
 
-    CORP   SERVER   SOC    AD     DMZ
-
-Firewall policy controls every inter-zone path.
+Instead, access is tied to specific requirements.
 
 ---
 
-# Historical and Final-State Documentation
+# Firewall and Detection Relationship
 
-This project repository intentionally preserves the full evolution of the lab.
+The firewall is part of a larger defense-in-depth architecture.
 
-Earlier configurations may reference:
+Traffic may pass through:
 
-- `192.168.56.0/24`
-- simple NAT networking
-- fewer security zones
-- temporary allow rules
-- earlier endpoint-only scenarios
+    Source Host
+        |
+        v
+    OPNsense Firewall
+        |
+        v
+    Suricata IDS
+        |
+        v
+    Destination Service
+        |
+        v
+    Endpoint / Application Logs
+        |
+        v
+    Wazuh SIEM
 
-These represent legitimate historical stages.
-
-They should not be interpreted as the current firewall state.
-
-The final authoritative policy is the six-zone architecture documented in this file and the accompanying policy matrix.
+This means an allowed connection can still generate security telemetry and detections.
 
 ---
 
-# Snapshot Baseline
+# Change Management
 
-Throughout the build, snapshots were used before major firewall changes.
+Throughout the project, firewall changes followed a consistent workflow:
 
-Examples included:
+    Snapshot
+        |
+        v
+    Configure
+        |
+        v
+    Review Rule Order
+        |
+        v
+    Save
+        |
+        v
+    Apply Changes
+        |
+        v
+    Generate Test Traffic
+        |
+        v
+    Review OPNsense Logs
+        |
+        v
+    Verify Wazuh / Endpoint Behaviour
+        |
+        v
+    Document
 
-- Suricata integration
-- ADNET deployment
-- CORPNET-to-AD firewall rules
-- DMZ creation
-- web exposure
-- DMZ monitoring
-- restricted SSH administration
+Important firewall-related snapshots included stages such as:
 
-Once the environment passed final six-zone validation, obsolete snapshots were removed.
+- OPNsense Suricata integration
+- ADNET baseline
+- pre-CORPNET Active Directory rules
+- pre-ADNET Wazuh rules
+- pre-DMZ build
+- DMZ firewall baseline
+- pre-DMZ web exposure
+- DMZ web exposure verified
+- pre-CORPNET-to-DMZ SSH
+- CORPNET-to-DMZ SSH verified
 
-Every VM now retains only:
+After the lab reached its final validated state, these temporary build snapshots were removed.
+
+---
+
+# Final Snapshot Baseline
+
+Every virtual machine now retains:
 
 `Final-Six-Zone-Validated-Baseline`
+
+This common snapshot represents the validated infrastructure state before operational SOC and Purple Team exercises begin.
+
+---
+
+# Historical vs Current Rules
+
+This repository intentionally documents the firewall from the beginning of the project through the final state.
+
+Earlier sections therefore describe rules and architectures that were later replaced or expanded.
+
+Examples include:
+
+- the original `192.168.56.0/24` network
+- the first four-zone architecture
+- early REDNET-to-SERVERNET testing
+- workstation access to the original Ubuntu server
+- initial DNS and management rules
+- later SOCNET monitoring rules
+- ADNET introduction
+- DMZ introduction
+
+These are preserved because they demonstrate the engineering evolution of the environment.
+
+The authoritative current firewall configuration is the final six-zone policy documented in the later sections of this file.
 
 ---
 
 # Final Status
 
-The firewall phase is complete.
+The firewall build is complete.
 
-The final OPNsense configuration provides:
+The environment evolved from a simple flat lab into an OPNsense-controlled architecture providing:
 
-- six-zone segmentation
-- explicit least-privilege rules
-- broad private-network protection
-- controlled Active Directory access
-- endpoint-to-SIEM communication
-- restricted DMZ administration
+- REDNET attacker isolation
+- CORPNET workstation controls
+- SERVERNET protection
+- SOCNET telemetry collection
+- ADNET identity isolation
+- DMZ segmentation
+- Active Directory service rules
+- Wazuh agent communication
+- firewall log forwarding
+- Suricata IDS telemetry
 - controlled REDNET attack paths
-- DMZ Internet access
-- firewall logging
-- Suricata IDS
-- centralized security telemetry
+- restricted administrative SSH
+- controlled Internet access
+- default-deny behaviour
+- broad private-network protection
+- logged security boundaries
+- validated end-to-end segmentation
 
-The firewall is now treated as stable infrastructure for realistic SOC and Purple Team operations rather than an unfinished build component.
+The firewall is now treated as stable infrastructure for realistic SOC and Purple Team operations rather than an unfinished network build.
