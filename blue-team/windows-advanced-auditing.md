@@ -1,779 +1,1008 @@
-# Windows Advanced Security Auditing
+# Windows Advanced Auditing
 
-## 1. Overview
+## Overview
 
-This document records the advanced Windows security auditing and Wazuh monitoring implemented and verified on:
+This document records the complete evolution of Windows advanced auditing in the Cybersecurity Home Lab, from the earliest standalone Windows endpoint through the final domain-managed, Wazuh-integrated monitoring architecture.
+
+Advanced auditing was not part of the original flat lab.
+
+The earliest Windows environment focused primarily on:
+
+- basic connectivity
+- Windows Firewall
+- local event logs
+- endpoint administration
+- attacker/defender testing
+
+As the project matured, the need for richer security telemetry became clear.
+
+The Windows environment therefore evolved to include:
+
+- advanced audit policy
+- logon auditing
+- process creation auditing
+- command-line process capture
+- special logon auditing
+- Windows Firewall event monitoring
+- privilege-related events
+- Active Directory change auditing
+- Group Policy enforcement
+- Wazuh ingestion
+
+The final audited Windows systems are:
+
+- `LAB-WIN-01`
+- `LAB-DC-01`
+
+Both provide security telemetry to:
+
+`LAB-SIEM-01`
+
+---
+
+# Phase 1 — Before Advanced Auditing
+
+The original Windows system operated on:
+
+`192.168.56.20`
+
+within the early flat lab.
+
+At this stage, Windows logging relied mainly on:
+
+- standard Security event logs
+- basic Windows Firewall behaviour
+- manual Event Viewer review
+- direct endpoint observation
+
+This was sufficient for introductory work but not for a mature SOC environment.
+
+Important questions could not always be answered clearly, such as:
+
+- Which process executed?
+- Which user launched it?
+- Was the logon privileged?
+- What command line was used?
+- Was a security policy changed?
+- Was an Active Directory object modified?
+
+This created the need for enhanced auditing.
+
+---
+
+# Why Advanced Auditing Was Added
+
+As Wazuh became the central SIEM, Windows needed to generate higher-value security events.
+
+The objectives included:
+
+- improved logon visibility
+- process execution visibility
+- privilege monitoring
+- audit-policy change detection
+- firewall-block visibility
+- Active Directory change auditing
+- better SOC investigation context
+- support for Purple Team exercises
+
+The goal was not simply to generate more events.
+
+The goal was to generate more useful events.
+
+---
+
+# Transition to LAB-WIN-01
+
+The Windows endpoint was rebuilt and moved into:
+
+`CORPNET`
+
+Final host:
 
 `LAB-WIN-01`
 
-The objective was to expand endpoint telemetry beyond Sysmon, PowerShell logging, and File Integrity Monitoring by collecting authentication, process creation, privilege assignment, user account management, and privileged group membership activity.
+Final address:
 
-The implementation was verified locally through the Windows Security Event Log and centrally through Wazuh.
+`10.10.20.20`
 
----
+Final role:
 
-# 2. Process Creation Auditing — Event ID 4688
+Corporate Windows workstation
 
-## Initial State
+The endpoint was enrolled into Wazuh as:
 
-The Windows Advanced Audit Policy for Process Creation was checked using:
+    ID: 001
+    Name: LAB-WIN-01
+    Status: Active
 
-`auditpol /get /subcategory:"Process Creation"`
-
-Initial result:
-
-`Process Creation    No Auditing`
-
-Process Creation auditing was therefore enabled.
-
-Command:
-
-`auditpol /set /subcategory:"Process Creation" /success:enable`
-
-Verification:
-
-`auditpol /get /subcategory:"Process Creation"`
-
-Result:
-
-`Process Creation    Success`
+This created the foundation for centralized auditing.
 
 ---
 
-## 3. Process Command-Line Logging
+# Advanced Audit Policy
 
-Windows was also configured to include command-line arguments inside process creation events.
+Advanced auditing was introduced to provide more granular security visibility than the default Windows audit configuration.
 
-Registry configuration:
+The final workstation baseline includes important categories such as:
 
-`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit`
+- Logon
+- Process Creation
+- Special Logon
 
-Value:
-
-`ProcessCreationIncludeCmdLine_Enabled = 1`
-
-Command used:
-
-`reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f`
-
-Verification:
-
-`Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" -Name ProcessCreationIncludeCmdLine_Enabled`
-
-Result:
-
-`1`
+These categories were selected because they provide strong value during investigation.
 
 ---
 
-# 4. Controlled Event ID 4688 Test
+# Logon Auditing
 
-A controlled PowerShell child process was created using:
+Logon auditing was configured for:
 
-`Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','Write-Output "CYBERLAB_4688_TEST_20260925"' -Wait`
+- Success
+- Failure
 
-The Windows Security Event Log was queried for Event ID 4688.
+This provides visibility into:
 
-Verified event:
+- successful user sessions
+- failed authentication attempts
+- suspicious logon behaviour
+- repeated failures
+- potentially compromised accounts
 
-- Event ID: `4688`
-- Description: `A new process has been created.`
-- User: `Emmanuel`
-- New Process: `powershell.exe`
-- Parent Process: `powershell.exe`
-- Token Elevation Type: Full / elevated
-- Command-line capture: enabled
-- Marker: `CYBERLAB_4688_TEST_20260925`
+This is particularly useful when correlating:
 
-The recorded command line contained:
-
-`powershell.exe -NoProfile -Command Write-Output "CYBERLAB_4688_TEST_20260925"`
-
-This confirmed that both Process Creation auditing and command-line capture were functioning correctly.
+- user activity
+- process execution
+- network behaviour
 
 ---
 
-# 5. Wazuh Security Event Channel Collection
+# Why Failed Logons Matter
 
-The Wazuh agent configuration was inspected at:
+Repeated failed authentication attempts may indicate:
 
-`C:\Program Files (x86)\ossec-agent\ossec.conf`
+- password guessing
+- brute-force attempts
+- stale credentials
+- misconfigured services
+- user error
 
-The Security Event Channel was already configured:
-
-`<location>Security</location>`
-
-with:
-
-`<log_format>eventchannel</log_format>`
-
-The existing query excluded several noisy Windows Security Event IDs but did not exclude Event ID `4688`.
-
-No Wazuh agent configuration change was required.
+Centralizing these events in Wazuh allows the SOC to distinguish between normal mistakes and suspicious patterns.
 
 ---
 
-# 6. Event ID 4688 in Wazuh
+# Why Successful Logons Matter
 
-The controlled process creation event was confirmed on `LAB-SIEM-01`.
+Successful logons provide context for later activity.
 
-Wazuh generated:
+For example:
 
-- Rule ID: `67027`
-- Description: `A process was created.`
-- Agent: `LAB-WIN-01`
-- Windows Event ID: `4688`
-- Command-line marker: `CYBERLAB_4688_TEST_20260925`
+    Successful Logon
+          |
+          v
+    Privileged Session
+          |
+          v
+    Process Execution
+          |
+          v
+    Suspicious PowerShell
+          |
+          v
+    Wazuh Investigation
 
-The event was also successfully located in the Wazuh Threat Hunting interface.
-
----
-
-# 7. Sysmon Correlation
-
-The same process creation was also independently detected through Sysmon Event ID 1.
-
-Wazuh generated the more specific detection:
-
-- Rule ID: `92027`
-- Rule Level: `4`
-- Description: `Powershell process spawned powershell instance`
-- MITRE ATT&CK: `T1059.001`
-- Tactic: `Execution`
-- Technique: `PowerShell`
-
-The Security Event 4688 process information correlated with the Sysmon Event ID 1 process information.
-
-Observed correlation:
-
-Security Event 4688:
-
-- New Process ID: `0x13a0`
-- Creator Process ID: `0x2464`
-
-Sysmon:
-
-- Process ID: `5024`
-- Parent Process ID: `9316`
-
-Hexadecimal conversion confirms:
-
-`0x13a0 = 5024`
-
-`0x2464 = 9316`
-
-Both telemetry sources therefore described the same process execution.
-
-This demonstrated the value of correlating multiple endpoint telemetry sources rather than depending on a single log source.
+Without the logon event, process activity may lack user context.
 
 ---
 
-# 8. Authentication Auditing
+# Special Logon Auditing
 
-The Windows Logon audit policy was checked:
+Special Logon auditing was enabled.
 
-`auditpol /get /subcategory:"Logon"`
+An important event in this category is:
 
-Result:
+`Event ID 4672`
 
-`Logon    Success and Failure`
+Description:
 
-No configuration change was required.
+`Special privileges assigned to new logon`
 
-The following authentication events were tested and verified.
-
----
-
-# 9. Successful Logon — Event ID 4624
-
-Successful Windows authentication events were observed using Event ID:
-
-`4624`
-
-A verified event for user:
-
-`Emmanuel`
-
-contained:
-
-- Logon Type: `2`
-- Logon Type Meaning: Interactive
-- Authentication Package: `Negotiate`
-- Workstation: `DESKTOP-7T1HFS1`
-- Source Address: `127.0.0.1`
-- Account: `Emmanuel`
-
-Wazuh detection:
-
-- Rule ID: `60118`
-- Rule Level: `3`
-- Description: `Windows Workstation Logon Success`
-- MITRE ATT&CK: `T1078`
-- Technique: `Valid Accounts`
-
-The event was verified through Wazuh Threat Hunting.
+This event can indicate that a user session received elevated privileges.
 
 ---
 
-# 10. Failed Logon — Event ID 4625
+# Event ID 4672
 
-A controlled failed network authentication was generated using:
+Event `4672` is particularly valuable when investigating:
 
-`net use \\127.0.0.1\IPC$ /user:.\CYBERLAB_FAIL_TEST WrongPassword123!`
+- administrators
+- Domain Admins
+- privileged service accounts
+- elevated sessions
+- lateral movement
 
-The authentication failed as expected.
+It does not automatically indicate malicious activity.
 
-Windows generated:
-
-- Event ID: `4625`
-- Description: `An account failed to log on.`
-- Target Account: `CYBERLAB_FAIL_TEST`
-- Logon Type: `3`
-- Logon Type Meaning: Network
-- Authentication Package: `NTLM`
-- Source Address: `127.0.0.1`
-- Failure Reason: Unknown user name or bad password
-- Status: `0xC000006D`
-- Sub Status: `0xC0000064`
-
-Wazuh generated:
-
-- Rule ID: `60122`
-- Rule Level: `5`
-- Description: `Logon Failure - Unknown user or bad password`
-
-The event was successfully verified through the Wazuh Threat Hunting interface.
+Its value comes from correlation with other events.
 
 ---
 
-# 11. Special Privilege Assignment — Event ID 4672
+# Process Creation Auditing
 
-The Special Logon audit policy was checked:
+Process creation auditing was enabled.
 
-`auditpol /get /subcategory:"Special Logon"`
+This allows Windows to record when new processes start.
 
-Result:
-
-`Special Logon    Success`
-
-Event ID `4672` was observed for both SYSTEM and administrator sessions.
-
-A useful administrator event was identified for:
-
-- Account: `Emmanuel`
-- Domain: `DESKTOP-7T1HFS1`
-- Logon ID: `0x811B0`
-
-Privileges included:
-
-- `SeSecurityPrivilege`
-- `SeTakeOwnershipPrivilege`
-- `SeLoadDriverPrivilege`
-- `SeBackupPrivilege`
-- `SeRestorePrivilege`
-- `SeDebugPrivilege`
-- `SeSystemEnvironmentPrivilege`
-- `SeImpersonatePrivilege`
-- `SeDelegateSessionUserImpersonatePrivilege`
+Process execution is one of the most valuable sources of endpoint telemetry because many attacker actions ultimately involve launching a process.
 
 ---
 
-# 12. Logon ID Correlation
+# Command-Line Process Creation
 
-The earlier successful 4624 event contained:
+The lab also enabled:
 
-- Target Logon ID: `0x811ED`
-- Linked Logon ID: `0x811B0`
+`Include command line in process creation events`
 
-The Event ID 4672 privileged session contained:
+This significantly improves investigation value.
 
-- Logon ID: `0x811B0`
+Instead of seeing only:
 
-This allowed the authentication and privilege events to be correlated:
+    powershell.exe
 
-`4624 Interactive Logon`
+an analyst may see how PowerShell was actually launched.
 
-→ `Linked administrative session`
+Likewise, instead of only:
 
-→ `4672 Special Privileges Assigned`
+    cmd.exe
 
-This demonstrates how Logon IDs can be used during SOC investigations to connect authentication and privilege events.
-
-The 4672 event was also verified in Wazuh Threat Hunting.
+the command-line arguments provide additional context.
 
 ---
 
-# 13. User Account Management Auditing
+# Why Command-Line Capture Matters
 
-The User Account Management audit policy was checked:
+Executable names alone can be ambiguous.
 
-`auditpol /get /subcategory:"User Account Management"`
+For example:
 
-Result:
+    powershell.exe
 
-`User Account Management    Success`
+could represent:
 
-No policy modification was required.
+- normal administration
+- a security script
+- reconnaissance
+- malware execution
 
-A temporary lab account was created:
-
-`CYBERLAB_AUDIT_TEST`
-
-The account password was entered interactively using:
-
-`net user CYBERLAB_AUDIT_TEST * /add`
-
-The `*` option was intentionally used so the password would not appear inside process command-line telemetry.
+Command-line arguments can help distinguish these possibilities.
 
 ---
 
-# 14. Event ID 4720 — Account Created
+# Process Auditing and Sysmon
 
-Windows generated:
+Windows process auditing was not used as a replacement for Sysmon.
 
-- Event ID: `4720`
-- Description: `A user account was created.`
-- Creator: `Emmanuel`
-- Account: `CYBERLAB_AUDIT_TEST`
+Both were retained.
 
-The event was verified locally and through Wazuh Threat Hunting.
+Windows auditing provides one source.
 
----
+Sysmon provides another.
 
-# 15. Account Creation Sequence
+This creates overlapping evidence.
 
-Immediately following account creation, Windows generated:
+Example:
 
-`4720` — User account created
+    Process Execution
+        |
+        +--> Windows Security Event
+        |
+        +--> Sysmon Event
+        |
+        v
+    Wazuh
 
-`4722` — User account enabled
-
-`4738` — User account changed
-
-The three events occurred during the same account initialization sequence.
-
----
-
-# 16. Account Disable / Enable Lifecycle
-
-The temporary account was disabled using:
-
-`net user CYBERLAB_AUDIT_TEST /active:no`
-
-Windows generated:
-
-`4725` — User account disabled
-
-The account was then re-enabled:
-
-`net user CYBERLAB_AUDIT_TEST /active:yes`
-
-Windows generated:
-
-`4722` — User account enabled
-
-Windows also generated Event ID `4738` during the associated state changes.
+This allows analysts to validate suspicious activity using multiple sources.
 
 ---
 
-# 17. Account Deletion
+# PowerShell Correlation
 
-The temporary account was deleted using:
+Process auditing became particularly useful when combined with PowerShell logging.
 
-`net user CYBERLAB_AUDIT_TEST /delete`
+A suspicious PowerShell sequence can produce:
 
-Windows generated:
+- process creation event
+- command-line information
+- Script Block Logging
+- Module Logging
+- Sysmon process event
+- transcription
 
-`4726` — User account deleted
-
-The complete observed account lifecycle was:
-
-`4720` — Created
-
-`4722` — Enabled
-
-`4738` — Changed
-
-`4725` — Disabled
-
-`4738` — Changed
-
-`4722` — Re-enabled
-
-`4738` — Changed
-
-`4726` — Deleted
-
-The lifecycle was verified locally and centrally through Wazuh Threat Hunting.
+This greatly improves investigation quality.
 
 ---
 
-# 18. Security Group Management Auditing
+# Windows Firewall Monitoring
 
-The Security Group Management audit policy was checked:
+Windows Firewall telemetry was also incorporated into the auditing strategy.
 
-`auditpol /get /subcategory:"Security Group Management"`
+One important event is:
 
-Result:
+`Event ID 5157`
 
-`Security Group Management    Success`
+Description:
 
-No configuration change was required.
+`The Windows Filtering Platform has blocked a connection`
 
-A temporary account was created:
-
-`CYBERLAB_GROUP_TEST`
-
-The account was used to test privileged local-group membership monitoring.
+This event indicates that the host firewall blocked traffic.
 
 ---
 
-# 19. Event ID 4732 — Added to Administrators
+# Why Event 5157 Matters
 
-The test user was added to the local Administrators group:
+In a segmented environment, failed connectivity can be caused by multiple controls.
 
-`net localgroup Administrators CYBERLAB_GROUP_TEST /add`
+Possible causes include:
 
-Windows generated:
+- OPNsense
+- Windows Firewall
+- application state
+- routing
+- service failure
 
-`4732` — A member was added to a security-enabled local group
-
-Observed fields:
-
-- Performed by: `Emmanuel`
-- Group: `Administrators`
-- Group SID: `S-1-5-32-544`
-- Member SID ending in: `-1003`
-
-Windows did not populate the account name directly in the Member field.
-
-The SID was therefore resolved using:
-
-`Get-LocalUser CYBERLAB_GROUP_TEST | Select-Object Name,SID`
-
-Result:
-
-`CYBERLAB_GROUP_TEST`
-
-mapped to:
-
-`S-1-5-21-3188534369-2127354081-4186760499-1003`
-
-This confirmed that the 4732 event represented the test account being added to the local Administrators group.
+Event `5157` helps identify when the Windows endpoint itself blocked the connection.
 
 ---
 
-# 20. Event ID 4733 — Removed from Administrators
+# Network vs Host Firewall Visibility
 
-The account was removed from the local Administrators group:
+The final lab therefore has visibility at two firewall layers.
 
-`net localgroup Administrators CYBERLAB_GROUP_TEST /delete`
+## Network Layer
 
-Windows generated:
+`LAB-FW-01`
 
-`4733` — A member was removed from a security-enabled local group
+OPNsense
 
-Observed:
+## Host Layer
 
-- Performed by: `Emmanuel`
-- Group: `Administrators`
-- Group SID: `S-1-5-32-544`
-- Member SID ending in: `-1003`
+Windows Filtering Platform
 
-Both Event IDs `4732` and `4733` were verified through Wazuh Threat Hunting by filtering on the member SID.
+This allows analysts to determine whether a blocked connection failed:
 
----
-
-# 21. Final Test Account Cleanup
-
-The temporary group-membership test account was deleted:
-
-`net user CYBERLAB_GROUP_TEST /delete`
-
-Windows generated:
-
-`4726` — User account deleted
-
-Verified:
-
-- Account: `CYBERLAB_GROUP_TEST`
-- Performed by: `Emmanuel`
-- Target SID ending in: `-1003`
-
-No temporary audit accounts remain on the system.
+- before reaching the host
+- at the host itself
 
 ---
 
-# 22. SOC Investigation Skills Practiced
+# Windows Defender Relationship
 
-The exercises demonstrated several important SOC investigation techniques:
+Microsoft Defender monitoring was included alongside advanced auditing.
 
-- Filtering Wazuh events by structured fields
-- Searching by Windows Event ID
-- Searching by account name
-- Searching by SID
-- Correlating multiple telemetry sources
-- Correlating events using Logon IDs
-- Comparing successful and failed authentication
-- Distinguishing interactive and network logons
-- Investigating privileged sessions
-- Tracking user account lifecycle activity
-- Tracking privileged group membership changes
-- Resolving SIDs when account names are unavailable
-- Using MITRE ATT&CK mappings
-- Comparing local Windows evidence with central SIEM evidence
+This means suspicious activity may generate evidence from:
 
-The general investigation workflow used was:
-
-`Host`
-
-→ `Time`
-
-→ `Event ID`
-
-→ `User / SID`
-
-→ `Logon ID`
-
-→ `Process / Command`
-
-→ `Context`
-
-→ `Disposition`
-
----
-
-# 23. Verified Windows Security Event Coverage
-
-The following Windows Security Event IDs have now been tested and verified:
-
-| Event ID | Description |
-| --- | --- |
-| 4624 | Successful logon |
-| 4625 | Failed logon |
-| 4672 | Special privileges assigned to new logon |
-| 4688 | New process created |
-| 4720 | User account created |
-| 4722 | User account enabled |
-| 4725 | User account disabled |
-| 4726 | User account deleted |
-| 4732 | Member added to security-enabled local group |
-| 4733 | Member removed from security-enabled local group |
-| 4738 | User account changed |
-
----
-
-# 24. Endpoint Telemetry Layers
-
-`LAB-WIN-01` now provides several complementary telemetry sources:
-
-- Windows Security Event Log
+- Windows Security logs
 - Sysmon
-- PowerShell Script Block Logging — Event ID 4104
-- PowerShell Module Logging — Event ID 4103
-- PowerShell Transcription
-- Wazuh File Integrity Monitoring
-- Windows Process Creation auditing — Event ID 4688
-- Authentication auditing
-- Privileged-logon auditing
-- User account management auditing
-- Security group management auditing
+- PowerShell
+- Defender
+- Windows Firewall
 
-These telemetry sources are centrally collected and investigated through Wazuh.
+This layered approach improves confidence during investigation.
 
 ---
 
-# 25. Verified Monitoring Pipeline
+# File Integrity Monitoring Relationship
 
-The tested telemetry path is:
+Wazuh File Integrity Monitoring was also enabled on the Windows endpoint.
+
+A suspicious process may therefore be correlated with:
+
+- file creation
+- file modification
+- registry or configuration changes
+- process events
+
+This provides stronger detection context.
+
+---
+
+# Wazuh Integration
+
+Windows audit events are collected through the Wazuh agent.
+
+Final workstation agent:
+
+    ID: 001
+    Name: LAB-WIN-01
+    Status: Active
+
+Destination:
+
+`LAB-SIEM-01`
+
+Address:
+
+`10.10.40.10`
+
+Primary communication:
+
+`TCP/1514`
+
+---
+
+# Workstation Audit Architecture
+
+The final workstation monitoring path is:
+
+    User / Process Activity
+            |
+            v
+      LAB-WIN-01
+            |
+            +--> Security Logs
+            |
+            +--> Advanced Audit Events
+            |
+            +--> Process Creation
+            |
+            +--> Special Logon
+            |
+            +--> Windows Firewall
+            |
+            +--> Sysmon
+            |
+            +--> PowerShell
+            |
+            +--> Defender
+            |
+            v
+        Wazuh Agent
+            |
+            v
+       LAB-SIEM-01
+
+---
+
+# Active Directory Introduction
+
+Active Directory was introduced later in the project.
+
+Domain:
+
+`cyberlab.internal`
+
+Domain Controller:
+
+`LAB-DC-01`
+
+The workstation became domain joined.
+
+This allowed workstation auditing settings to move from local configuration into centralized Group Policy.
+
+---
+
+# Group Policy Baseline
+
+The security baseline created for the workstation is:
+
+`GPO-Workstation-Security-Baseline`
+
+Linked to:
+
+`CyberLab\Workstations`
+
+The baseline includes auditing settings.
+
+---
+
+# Group Policy Audit Settings
+
+The final GPO includes:
+
+## Logon
+
+    Success
+    Failure
+
+## Process Creation
+
+    Success
+
+## Special Logon
+
+    Success
+
+It also enables command-line process creation visibility.
+
+---
+
+# Why Group Policy Was Important
+
+Before Active Directory, security settings had to be configured directly on the endpoint.
+
+Group Policy improved the design by providing:
+
+- centralized administration
+- consistent configuration
+- easier scaling
+- reduced configuration drift
+- enterprise realism
+
+The final GPO configuration became the authoritative workstation baseline.
+
+---
+
+# GPO Validation
+
+The policy was successfully applied to:
 
 `LAB-WIN-01`
 
-→ `Windows Security / Sysmon`
+This confirmed:
 
-→ `Wazuh Agent`
+- domain connectivity
+- correct OU placement
+- functioning Group Policy
+- active audit policy
 
-→ `CORPNET`
+Status:
 
-→ `OPNsense`
-
-→ `SOCNET`
-
-→ `LAB-SIEM-01`
-
-→ `Wazuh Manager`
-
-→ `Filebeat`
-
-→ `Wazuh Indexer`
-
-→ `Wazuh Threat Hunting Dashboard`
-
-The complete pipeline was successfully verified.
+**PASS**
 
 ---
 
-# 26. Snapshot Milestone
+# Domain Controller Auditing
 
-After all temporary accounts were removed and the endpoint returned to a clean state, the following powered-off milestone snapshot was created:
+When `LAB-DC-01` was deployed, auditing expanded into identity infrastructure.
 
-`Windows - Advanced Security Auditing Verified`
+The Domain Controller generates events that do not normally exist on a standalone workstation.
 
-This snapshot represents the verified endpoint state after:
+Important validated examples include:
 
-- Process creation auditing
-- Command-line capture
-- Authentication monitoring
-- Privileged-logon monitoring
-- User account management monitoring
-- Security group membership monitoring
-- Wazuh Threat Hunting verification
+- `4672`
+- `4719`
+- `5136`
 
 ---
 
-# 27. Snapshot Storage Maintenance
+# Event ID 4719
 
-During this phase, host storage dropped to approximately:
+Event:
 
-`17.2 GB free`
+`4719`
 
-A review showed excessive VirtualBox snapshot chains consuming significant disk capacity.
+Description:
 
-Snapshots were removed using `VBoxManage snapshot ... delete`.
+`System audit policy was changed`
 
-Snapshot `.vdi`, `.sav`, and VirtualBox snapshot directories were never manually deleted.
+This is important because attackers or administrators may alter audit settings.
 
-After cleanup, host storage increased to approximately:
+A malicious actor may attempt to reduce logging before performing other actions.
 
-`139.15 GB free`
-
-This reinforced the operational rule:
-
-`Snapshots are rollback points, not backups.`
-
-Only meaningful milestone snapshots should be retained.
+Monitoring audit policy changes therefore helps detect possible defense evasion.
 
 ---
 
-# 28. Current Windows Snapshot Strategy
+# Why Event 4719 Matters
 
-After cleanup, the primary Windows snapshot chain was reduced to meaningful milestones:
+If auditing changes unexpectedly, the SOC should investigate:
 
-`CORPNET Final Cutover Verified`
+- who made the change
+- what setting changed
+- whether it was authorized
+- what happened immediately before and after
 
-→ `Windows - PowerShell Transcription + Wazuh FIM Verified`
-
-→ `Windows - Advanced Security Auditing Verified`
-
-This substantially reduces snapshot sprawl while preserving useful recovery points.
-
----
-
-# 29. Security Lessons Learned
-
-### Process telemetry
-
-Knowing that `powershell.exe` ran is useful.
-
-Knowing:
-
-`powershell.exe -NoProfile -Command ...`
-
-is much more useful.
-
-Command-line capture significantly improves process investigation.
-
-### Multiple telemetry sources
-
-The same PowerShell process was independently observed through:
-
-- Windows Security Event ID 4688
-- Sysmon Event ID 1
-
-Independent telemetry sources can be correlated to increase investigation confidence.
-
-### Authentication context
-
-A successful or failed logon alone is insufficient.
-
-Analysts should examine:
-
-- user
-- source
-- logon type
-- authentication package
-- status
-- privilege assignment
-- associated process activity
-
-### Privileged-group changes
-
-Administrators-group membership changes are important security events.
-
-Even when Windows provides only a SID, the SID can be resolved and correlated with other events.
-
-### Temporary credentials
-
-Passwords should not be placed directly into command lines on systems where process command-line auditing is enabled.
-
-Interactive password entry was used during test-account creation to avoid recording lab credentials in telemetry.
+This event becomes more valuable when correlated with privileged logons and process execution.
 
 ---
 
-# 30. Result
+# Event ID 5136
 
-Advanced Windows auditing is operational on `LAB-WIN-01`.
+Event:
 
-Verified capabilities include:
+`5136`
 
-- Process creation auditing
-- Process command-line capture
-- Security Event ID 4688
-- Sysmon process correlation
-- Successful logon monitoring
-- Failed logon monitoring
-- Special privilege monitoring
-- Account creation monitoring
-- Account enable/disable monitoring
-- Account modification monitoring
-- Account deletion monitoring
-- Local Administrators membership monitoring
-- SID-based investigation
-- Logon-ID correlation
-- Wazuh Threat Hunting verification
-- MITRE ATT&CK context
-- Endpoint-to-SIEM telemetry verification
+represents modification of an Active Directory object.
+
+This is important for monitoring changes such as:
+
+- user attributes
+- group-related objects
+- directory configuration
+
+The exact security meaning depends on which object and attribute changed.
 
 ---
 
-# 31. Next Phase
+# Why Event 5136 Matters
 
-The next Windows/security-monitoring phase will continue with additional telemetry such as:
+Active Directory changes can be security-critical.
 
-- Microsoft Defender Operational events
-- Windows Firewall logging
-- Service installation monitoring
-- Scheduled task monitoring
-- Persistence-related Windows events
+Potential scenarios include:
 
-After Windows telemetry is complete, the broader homelab roadmap continues with:
+- unauthorized account modification
+- privilege changes
+- group membership manipulation
+- persistence
+- administrative misconfiguration
 
-`Detection Engineering`
+Event `5136` provides directory-change evidence for investigation.
 
-→ `OPNsense Log Centralization`
+---
 
-→ `Suricata IDS`
+# Event 4672 on the Domain Controller
 
-→ `Linux Security Monitoring`
+Event `4672` was also observed on the Domain Controller.
 
-→ `Active Directory`
+This provides visibility into privileged logons involving sensitive domain accounts.
 
-→ `DMZ`
+This is especially useful for monitoring:
 
-→ `Attack / Detect / Investigate / Respond`
+- Domain Admin activity
+- administrative sessions
+- privileged automation
 
-→ `Threat Hunting`
+---
 
-→ `Incident Response`
+# Standard and Privileged Accounts
 
-→ `Final Capstone`
+The Active Directory environment separates normal and privileged identities.
+
+Standard account:
+
+`emmanuel.patrick@cyberlab.internal`
+
+Privileged account:
+
+`emmanuel.ngari-adm@cyberlab.internal`
+
+This improves the value of auditing because privileged operations can be more clearly attributed to a dedicated administrative identity.
+
+---
+
+# Domain Controller Wazuh Integration
+
+The Domain Controller was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+    Status: Active
+
+This allows Active Directory audit events to be investigated centrally.
+
+---
+
+# Domain Controller Monitoring Architecture
+
+The final identity-monitoring path is:
+
+    Domain Activity
+         |
+         v
+     LAB-DC-01
+         |
+         +--> Windows Security Events
+         |
+         +--> AD Change Events
+         |
+         +--> Audit Policy Events
+         |
+         +--> Privileged Logon Events
+         |
+         +--> Sysmon
+         |
+         v
+      Wazuh Agent
+         |
+         v
+     LAB-SIEM-01
+
+---
+
+# Sysmon Relationship on the Domain Controller
+
+Sysmon was later installed on:
+
+`LAB-DC-01`
+
+Version:
+
+`15.22`
+
+This provides additional process-level context around audited domain activity.
+
+For example:
+
+    Event 5136
+        |
+        +
+    Sysmon Process Event
+        |
+        v
+    Wazuh Investigation
+
+This may help identify what process was active around a directory change.
+
+---
+
+# Auditing and Detection Engineering
+
+The advanced auditing infrastructure supports future detection engineering.
+
+Potential use cases include:
+
+- repeated failed logons
+- suspicious privileged sessions
+- unexpected audit-policy changes
+- unusual process creation
+- unauthorized AD modification
+- host firewall blocks
+- suspicious PowerShell
+- lateral movement
+
+---
+
+# Purple Team Workflow
+
+The auditing environment supports a Purple Team model:
+
+    Controlled Attack
+          |
+          v
+    Windows / AD Activity
+          |
+          v
+    Security Events
+          |
+          v
+    Wazuh
+          |
+          v
+    Analyst Investigation
+          |
+          v
+    Detection Improvement
+
+This turns Windows auditing into an operational security capability rather than a compliance-only setting.
+
+---
+
+# Multi-Source Correlation
+
+One of the strongest aspects of the final architecture is that Windows auditing does not operate alone.
+
+A single attack may produce evidence from:
+
+- Windows Security
+- Sysmon
+- PowerShell
+- Defender
+- Windows Firewall
+- OPNsense
+- Suricata
+- Wazuh
+
+This allows analysts to reconstruct activity across:
+
+- identity
+- endpoint
+- process
+- network
+- application layers
+
+---
+
+# Example Investigation Chain
+
+A future scenario might produce:
+
+    Failed Logons
+        |
+        v
+    Successful Logon
+        |
+        v
+    Event 4672
+        |
+        v
+    Suspicious Process Creation
+        |
+        v
+    PowerShell 4104
+        |
+        v
+    Sysmon
+        |
+        v
+    Network Connection
+        |
+        v
+    Firewall / Suricata
+        |
+        v
+    Wazuh Investigation
+
+This is the kind of telemetry chain the lab was designed to support.
+
+---
+
+# Audit Noise Considerations
+
+Advanced auditing can create significant event volume.
+
+The objective is not simply to enable every category.
+
+The selected audit categories prioritize:
+
+- authentication
+- privilege use
+- process execution
+- policy changes
+- identity changes
+
+Additional auditing should be introduced only when it supports a specific detection or investigation requirement.
+
+---
+
+# Final Workstation Audit State
+
+`LAB-WIN-01`
+
+Final auditing includes:
+
+- Logon Success
+- Logon Failure
+- Process Creation Success
+- Special Logon Success
+- command-line process capture
+- Windows Firewall monitoring
+- PowerShell logging
+- Sysmon
+- Defender
+- Wazuh
+
+---
+
+# Final Domain Controller Audit State
+
+`LAB-DC-01`
+
+Final monitoring includes:
+
+- Windows Security events
+- privileged logon events
+- audit-policy change events
+- Active Directory modification events
+- Sysmon
+- Wazuh
+
+Important observed events include:
+
+- `4672`
+- `4719`
+- `5136`
+
+---
+
+# Final Validation Summary
+
+| Validation | Result |
+|---|---|
+| Advanced auditing introduced | PASS |
+| Logon Success auditing | PASS |
+| Logon Failure auditing | PASS |
+| Process Creation auditing | PASS |
+| Command-line process capture | PASS |
+| Special Logon auditing | PASS |
+| Windows Firewall Event 5157 monitoring | PASS |
+| Wazuh Windows agent active | PASS |
+| Group Policy baseline applied | PASS |
+| Audit settings managed through GPO | PASS |
+| Domain Controller auditing | PASS |
+| Event 4672 observed | PASS |
+| Event 4719 observed | PASS |
+| Event 5136 observed | PASS |
+| Domain Controller Wazuh agent active | PASS |
+| Sysmon correlation available | PASS |
+
+---
+
+# Historical vs Current State
+
+This document intentionally preserves the full auditing evolution.
+
+Historical stages include:
+
+- basic Windows logging
+- standalone endpoint auditing
+- local security-event review
+- introduction of Wazuh
+- advanced audit policy
+- process creation logging
+- command-line capture
+- Windows Firewall monitoring
+- Active Directory introduction
+- Group Policy enforcement
+- Domain Controller auditing
+- identity-change monitoring
+
+The authoritative current state is:
+
+    LAB-WIN-01:
+      Logon Auditing: Success / Failure
+      Process Creation: Success
+      Command Line: Enabled
+      Special Logon: Success
+      Windows Firewall Monitoring: Active
+      Wazuh: Active
+
+    LAB-DC-01:
+      Security Auditing: Active
+      Privileged Logon Monitoring: Active
+      Audit Policy Change Monitoring: Active
+      AD Change Monitoring: Active
+      Sysmon: Active
+      Wazuh: Active
+
+---
+
+# Evolution Summary
+
+Windows auditing evolved through:
+
+    Basic Windows Logs
+           |
+           v
+    Need for Better Security Visibility
+           |
+           v
+    Wazuh Endpoint Monitoring
+           |
+           v
+    Advanced Audit Policy
+           |
+           v
+    Process Creation
+           |
+           v
+    Command-Line Capture
+           |
+           v
+    Windows Firewall Monitoring
+           |
+           v
+    Active Directory
+           |
+           v
+    Group Policy Enforcement
+           |
+           v
+    Domain Controller Auditing
+           |
+           v
+    AD Change / Privilege Monitoring
+           |
+           v
+    Final SOC-Ready Windows Auditing
+
+---
+
+# Final Status
+
+The Windows advanced auditing infrastructure phase is complete.
+
+The lab now provides centralized visibility into:
+
+- user authentication
+- failed logons
+- process creation
+- command-line execution
+- privileged sessions
+- host firewall blocks
+- audit-policy changes
+- Active Directory modifications
+
+These events are available alongside Sysmon, PowerShell, Defender, firewall, and IDS telemetry in Wazuh.
+
+Future work should focus on generating realistic Windows and Active Directory attack scenarios and using these audit sources for detection engineering, threat hunting, incident investigation, and Purple Team validation rather than enabling additional audit categories without a clear operational reason.
