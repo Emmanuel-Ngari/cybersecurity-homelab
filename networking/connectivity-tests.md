@@ -1,568 +1,776 @@
-# Homelab Connectivity Testing
+# Connectivity and Segmentation Validation
 
-## 1. Overview
+## Overview
 
-This document records the connectivity testing performed within my cybersecurity homelab.
+This document records the final connectivity and segmentation validation performed across the six-zone Cybersecurity Home Lab.
 
-The purpose of these tests is to verify that the virtual machines can communicate correctly across the isolated LAB-NET network while maintaining separate NAT connectivity for Internet access.
+The objective was to confirm that:
 
-Connectivity testing is an important part of validating the laboratory architecture before beginning offensive security, defensive security, monitoring, and incident response exercises.
+- required services remain reachable
+- unauthorized east-west communication is blocked
+- security monitoring paths remain operational
+- Active Directory connectivity works correctly
+- DMZ access follows least-privilege policy
+- REDNET remains isolated from protected enterprise services
+- all monitored endpoints remain connected to Wazuh
 
----
-
-## 2. Laboratory Systems
-
-The current cybersecurity homelab contains three primary virtual machines.
-
-| System | Role | LAB-NET Address |
-|---|---|---|
-| Kali Linux | Offensive Security Workstation | `192.168.56.10/24` |
-| Windows 11 Enterprise | Windows Endpoint / Blue Team | `192.168.56.20/24` |
-| Ubuntu Server | Linux Server / Blue Team | `192.168.56.30/24` |
-
-All systems are connected to the isolated:
-
-`192.168.56.0/24`
-
-LAB-NET network.
+The validation was completed after the firewall, Active Directory, SIEM, Suricata, endpoint-monitoring and DMZ phases were finished.
 
 ---
 
-## 3. Testing Objectives
+## Final Network Architecture
 
-The connectivity tests were performed to verify:
+| Zone | Subnet | Gateway | Primary Host |
+|---|---|---|---|
+| REDNET | `10.10.10.0/24` | `10.10.10.1` | `LAB-KALI-01` |
+| CORPNET | `10.10.20.0/24` | `10.10.20.1` | `LAB-WIN-01` |
+| SERVERNET | `10.10.30.0/24` | `10.10.30.1` | `LAB-UBUNTU-01` |
+| SOCNET | `10.10.40.0/24` | `10.10.40.1` | `LAB-SIEM-01` |
+| ADNET | `10.10.50.0/24` | `10.10.50.1` | `LAB-DC-01` |
+| DMZ | `10.10.60.0/24` | `10.10.60.1` | `LAB-DMZ-01` |
 
-- Correct IPv4 addressing
-- Correct subnet configuration
-- LAB-NET communication
-- NAT connectivity
-- Routing functionality
-- Network interface configuration
-- Windows Firewall behavior
-- Ubuntu network configuration
-- VirtualBox network configuration
-- Communication between offensive and defensive systems
-
-Successful connectivity provides the foundation required for future security exercises.
+All inter-zone traffic is routed through `LAB-FW-01`.
 
 ---
 
-## 4. Network Design
+# Validation Method
 
-The laboratory uses two network interfaces on each virtual machine.
+Connectivity testing was performed using:
 
-### NAT
+- `curl`
+- `nc`
+- `Test-NetConnection`
+- `dcdiag`
+- Wazuh `agent_control`
+- direct service validation
+- firewall logging
+- Suricata alerts
+- Wazuh alert verification
 
-Used for:
+The tests were intentionally selected to confirm both approved and denied communication paths.
 
-- Internet connectivity
-- Operating system updates
-- Package installation
-- Tool downloads
-- Access to legitimate learning resources
-
-### LAB-NET
-
-Used for:
-
-- Communication between laboratory systems
-- Network scanning
-- Service enumeration
-- Packet analysis
-- Security monitoring
-- Controlled exploitation
-- Incident response exercises
-
-LAB-NET uses:
-
-`192.168.56.0/24`
+A successful timeout or failed connection was considered a pass when the firewall policy required the traffic to be blocked.
 
 ---
 
-## 5. Kali Linux Network Configuration
+# REDNET Validation
 
-Kali Linux uses two interfaces.
+Source host:
 
-### NAT Interface
+`LAB-KALI-01 — 10.10.10.10`
 
-**Interface:** `eth0`
+REDNET represents the offensive and least-trusted network.
 
-**IPv4 Address:** `10.0.2.15/24`
+The objective was to ensure Kali could reach the intended DMZ web service while remaining isolated from administrative and internal enterprise services.
 
-### LAB-NET Interface
+## REDNET → DMZ HTTP
 
-**Interface:** `eth1`
+Test:
 
-**IPv4 Address:** `192.168.56.10/24`
+    curl -s -o /dev/null -w "%{http_code}\n" http://10.10.60.10/
 
-Kali serves as the primary offensive security workstation.
+Result:
 
----
+    HTTP 200
 
-## 6. Windows Network Configuration
+Status:
 
-Windows 11 Enterprise uses two network adapters.
+**PASS — Allowed as designed**
 
-### NAT Adapter
+Purpose:
 
-**Adapter Name:** `NAT`
-
-**IPv4 Address:** `10.0.2.15/24`
-
-**Default Gateway:** `10.0.2.2`
-
-### LAB-NET Adapter
-
-**Adapter Name:** `LAB-NET`
-
-**IPv4 Address:** `192.168.56.20/24`
-
-**Default Gateway:** None
-
-Windows serves as the primary Windows endpoint for security monitoring and defensive exercises.
+This path supports controlled web attack simulations against the DMZ.
 
 ---
 
-## 7. Ubuntu Network Configuration
+## REDNET → DMZ SSH
 
-Ubuntu Server uses two network interfaces.
+Test:
 
-### NAT Interface
+    nc -zv -w 3 10.10.60.10 22
 
-**Interface:** `enp0s3`
+Result:
 
-**IPv4 Address:** `10.0.2.15/24`
+    Connection timed out
 
-**Default Gateway:** `10.0.2.2`
+Status:
 
-### LAB-NET Interface
+**PASS — Blocked as designed**
 
-**Interface:** `enp0s8`
-
-**IPv4 Address:** `192.168.56.30/24`
-
-**Default Gateway:** None
-
-Ubuntu serves as the Linux server within the cybersecurity laboratory.
+This confirms the offensive workstation cannot use SSH to administer the DMZ server.
 
 ---
 
-## 8. Kali to Windows Connectivity Test
+## REDNET → CORPNET SMB
 
-Connectivity between Kali Linux and Windows 11 was tested across LAB-NET.
+Test:
 
-### Source
+    nc -zv -w 3 10.10.20.20 445
 
-Kali Linux:
+Result:
 
-`192.168.56.10`
+    Connection timed out
 
-### Destination
+Status:
 
-Windows 11:
+**PASS — Blocked as designed**
 
-`192.168.56.20`
-
-### Test Command
-
-`ping -c 4 192.168.56.20`
-
-### Result
-
-**Status:** 🟢 Successful
-
-Kali Linux was able to communicate with the Windows endpoint after network and firewall troubleshooting.
-
-This confirmed that both systems were correctly connected to LAB-NET.
+This prevents direct SMB access from the offensive network to the corporate workstation.
 
 ---
 
-## 9. Windows to Kali Connectivity Test
+## REDNET → ADNET LDAP
 
-Windows connectivity to Kali Linux was tested using ICMP.
+Test:
 
-### Source
+    nc -zv -w 3 10.10.50.10 389
 
-Windows 11:
+Result:
 
-`192.168.56.20`
+    Connection timed out
 
-### Destination
+Status:
 
-Kali Linux:
+**PASS — Blocked as designed**
 
-`192.168.56.10`
-
-### Test Command
-
-`ping 192.168.56.10`
-
-### Result
-
-**Status:** 🟢 Successful
-
-The test completed successfully with responses received from Kali Linux.
-
-This confirmed bidirectional communication between Windows and Kali.
+This confirms Kali cannot directly query Active Directory through LDAP.
 
 ---
 
-## 10. Ubuntu to Kali Connectivity Test
+# CORPNET Validation
 
-Ubuntu Server connectivity to Kali Linux was tested across LAB-NET.
+Source host:
 
-### Source
+`LAB-WIN-01 — 10.10.20.20`
 
-Ubuntu Server:
+CORPNET represents the enterprise workstation environment.
 
-`192.168.56.30`
-
-### Destination
-
-Kali Linux:
-
-`192.168.56.10`
-
-### Test Command
-
-`ping -c 4 192.168.56.10`
-
-### Result
-
-**Status:** 🟢 Successful
-
-**Packet Loss:** `0%`
-
-Ubuntu successfully communicated with Kali Linux across the isolated network.
+The workstation must be able to communicate with Active Directory and the Wazuh SIEM while also retaining the approved DMZ administration path.
 
 ---
 
-## 11. Ubuntu to Windows Connectivity Test
+## CORPNET → ADNET DNS
 
-Ubuntu Server connectivity to Windows 11 was tested across LAB-NET.
+Test:
 
-### Source
+    Test-NetConnection 10.10.50.10 -Port 53
 
-Ubuntu Server:
+Result:
 
-`192.168.56.30`
+    TcpTestSucceeded : True
 
-### Destination
+Status:
 
-Windows 11:
-
-`192.168.56.20`
-
-### Test Command
-
-`ping -c 4 192.168.56.20`
-
-### Result
-
-**Status:** 🟢 Successful
-
-**Packet Loss:** `0%`
-
-The successful test confirmed connectivity between the Linux server and Windows endpoint.
+**PASS**
 
 ---
 
-## 12. Ubuntu NAT Gateway Test
+## CORPNET → ADNET Kerberos
 
-Ubuntu Server was tested against the VirtualBox NAT gateway.
+Test:
 
-### Source
+    Test-NetConnection 10.10.50.10 -Port 88
 
-Ubuntu NAT Interface:
+Result:
 
-`10.0.2.15`
+    TcpTestSucceeded : True
 
-### Destination
+Status:
 
-VirtualBox NAT Gateway:
-
-`10.0.2.2`
-
-### Test Command
-
-`ping -c 4 10.0.2.2`
-
-### Result
-
-**Status:** 🟢 Successful
-
-**Packet Loss:** `0%`
-
-This confirmed that Ubuntu's NAT interface and default routing configuration were functioning correctly.
+**PASS**
 
 ---
 
-## 13. Ubuntu Persistence Test
+## CORPNET → ADNET LDAP
 
-Ubuntu's LAB-NET address was initially configured manually.
+Test:
 
-A persistent Netplan configuration was later created for:
+    Test-NetConnection 10.10.50.10 -Port 389
 
-`192.168.56.30/24`
+Result:
 
-After applying the configuration, the Ubuntu Server was rebooted.
+    TcpTestSucceeded : True
 
-The following command was used after reboot:
+Status:
 
-`ip addr show enp0s8`
+**PASS**
 
-The interface continued to show:
-
-`192.168.56.30/24`
-
-### Result
-
-**Status:** 🟢 Successful
-
-This confirmed that the LAB-NET configuration survived the reboot and was persistent.
+These three services confirm that the corporate workstation retains the core communication required for Active Directory domain membership.
 
 ---
 
-## 14. Routing Verification
+## CORPNET → SOCNET Wazuh
 
-Routing was checked to ensure that Internet traffic and laboratory traffic used the correct interfaces.
+Test:
 
-### Ubuntu
+    Test-NetConnection 10.10.40.10 -Port 1514
 
-Command:
+Result:
 
-`ip route`
+    TcpTestSucceeded : True
 
-The routing table confirmed:
+Status:
 
-- Default Internet route through `enp0s3`
-- Default gateway through `10.0.2.2`
-- LAB-NET traffic through `enp0s8`
-- Connected route for `192.168.56.0/24`
+**PASS**
 
-### Kali
-
-Command:
-
-`ip route`
-
-The routing configuration confirmed:
-
-- NAT traffic through `eth0`
-- LAB-NET traffic through `eth1`
-
-### Windows
-
-PowerShell command:
-
-`Get-NetRoute`
-
-The routing table confirmed:
-
-- Default route through the NAT interface
-- Connected LAB-NET route for `192.168.56.0/24`
-
-This verified that traffic was being routed according to the intended network design.
+This confirms endpoint telemetry can reach the Wazuh manager.
 
 ---
 
-## 15. Initial Windows Connectivity Problem
+## CORPNET → DMZ Administrative SSH
 
-During the initial configuration, Kali Linux was unable to successfully communicate with Windows.
+Test:
 
-Windows initially had an automatically assigned APIPA address within:
+    Test-NetConnection 10.10.60.10 -Port 22
 
-`169.254.0.0/16`
+Result:
 
-on the LAB-NET interface.
+    TcpTestSucceeded : True
 
-The required address was:
+Status:
 
-`192.168.56.20/24`
+**PASS**
 
-The Windows LAB-NET interface was manually configured with the correct static IPv4 address.
+This path is intentionally restricted to the approved administrative workstation.
 
----
+Approved path:
 
-## 16. Windows Firewall Troubleshooting
-
-After correcting the IP addressing configuration, Windows security settings were also investigated.
-
-The troubleshooting process included checking:
-
-- Windows Firewall profiles
-- Network profile configuration
-- ICMP behavior
-- Inbound firewall rules
-- Network adapter state
-- IP configuration
-- Routing information
-
-The Windows network profile was identified as:
-
-`Public`
-
-After the network and firewall issues were investigated and corrected, communication between Kali and Windows succeeded.
-
-This exercise demonstrated that successful networking depends on more than IP addressing alone.
-
-Endpoint firewall policies can also affect connectivity.
+    LAB-WIN-01
+        |
+        | TCP/22
+        v
+    LAB-DMZ-01
 
 ---
 
-## 17. Ubuntu Netplan Troubleshooting
+# SERVERNET Validation
 
-Ubuntu's LAB-NET address was initially configured temporarily using:
+Source host:
 
-`sudo ip addr add 192.168.56.30/24 dev enp0s8`
+`LAB-UBUNTU-01 — 10.10.30.30`
 
-Because this type of configuration does not normally survive a reboot, a persistent Netplan configuration was created.
-
-During the process, a YAML formatting error produced:
-
-`Error in network definition: expected sequence`
-
-The error was caused by incorrect YAML formatting around the address configuration.
-
-After correcting the indentation and address list syntax, the configuration was validated using:
-
-`sudo netplan generate`
-
-It was then safely tested using:
-
-`sudo netplan try`
-
-The configuration was successfully applied and later verified after reboot.
-
-This provided practical experience troubleshooting Linux network configuration and YAML syntax.
+SERVERNET represents protected internal Linux server infrastructure.
 
 ---
 
-## 18. Connectivity Troubleshooting Methodology
+## SERVERNET → SOCNET Wazuh
 
-The following troubleshooting process was developed during the laboratory setup.
+Test:
 
-### Step 1 — Verify Interfaces
+    nc -zv -w 3 10.10.40.10 1514
 
-Linux:
+Result:
 
-`ip addr`
+    Connection succeeded
 
-Windows:
+Status:
 
-`Get-NetAdapter`
-
-### Step 2 — Verify IP Addresses
-
-Linux:
-
-`ip addr`
-
-Windows:
-
-`Get-NetIPAddress`
-
-### Step 3 — Verify Routing
-
-Linux:
-
-`ip route`
-
-Windows:
-
-`Get-NetRoute`
-
-### Step 4 — Test Local Network Connectivity
-
-Use:
-
-`ping`
-
-to test communication between systems.
-
-### Step 5 — Inspect Firewall Configuration
-
-Windows:
-
-`Get-NetFirewallProfile`
-
-Linux firewall configuration can be inspected using tools such as:
-
-`sudo ufw status`
-
-when UFW is enabled.
-
-### Step 6 — Verify VirtualBox Configuration
-
-Confirm that:
-
-- NAT adapters are enabled
-- LAB-NET adapters are enabled
-- Correct VirtualBox network modes are selected
-- Virtual network adapters are connected
-
-### Step 7 — Retest
-
-Repeat the connectivity tests after every configuration change.
-
-### Step 8 — Document the Resolution
-
-Record:
-
-- The original problem
-- Commands used
-- Configuration changes
-- Test results
-- Final solution
-
-This provides a structured troubleshooting methodology that can be reused during future cybersecurity exercises.
+**PASS — Allowed**
 
 ---
 
-## 19. Current Connectivity Status
+## SERVERNET → CORPNET SMB
 
-**Overall Network Status:** 🟢 Operational
+Test:
 
-Current laboratory systems:
+    nc -zv -w 3 10.10.20.20 445
 
-| System | LAB-NET Address | Status |
-|---|---|---|
-| Kali Linux | `192.168.56.10` | 🟢 Online |
-| Windows 11 | `192.168.56.20` | 🟢 Online |
-| Ubuntu Server | `192.168.56.30` | 🟢 Online |
+Result:
 
-Verified tests include:
+    Connection timed out
 
-| Test | Result |
-|---|---|
-| Kali → Windows | 🟢 Successful |
-| Windows → Kali | 🟢 Successful |
-| Ubuntu → Kali | 🟢 Successful |
-| Ubuntu → Windows | 🟢 Successful |
-| Ubuntu → NAT Gateway | 🟢 Successful |
-| Ubuntu static IP after reboot | 🟢 Successful |
+Status:
 
-The laboratory networking foundation is operational and ready for future cybersecurity exercises.
+**PASS — Blocked**
+
+This reduces unnecessary lateral movement between the internal server and workstation zones.
 
 ---
 
-## 20. Security and Testing Disclaimer
+## SERVERNET → DMZ SSH
 
-All connectivity and network security testing documented in this repository is performed within my personally controlled cybersecurity homelab.
+Test:
 
-Testing is limited to systems that I own or systems for which I have explicit authorization.
+    nc -zv -w 3 10.10.60.10 22
 
-The laboratory is designed for:
+Result:
 
-- Cybersecurity education
-- Network administration
-- Network troubleshooting
-- Defensive security
-- Ethical hacking
-- Security monitoring
-- Incident response
-- Authorized penetration testing
+    Connection timed out
 
-No unauthorized external systems, networks, accounts, or organizations are targeted.
+Status:
 
-The purpose of this environment is to develop practical cybersecurity skills through controlled, documented, and ethical experimentation.
+**PASS — Blocked**
+
+SERVERNET is not authorized to administer the DMZ server.
+
+---
+
+# ADNET Validation
+
+Source host:
+
+`LAB-DC-01 — 10.10.50.10`
+
+ADNET contains critical identity infrastructure.
+
+The Domain Controller should communicate with SOCNET for telemetry but should not be used as a general-purpose jump host.
+
+---
+
+## ADNET → SOCNET Wazuh
+
+Test:
+
+    Test-NetConnection 10.10.40.10 -Port 1514
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+---
+
+## ADNET → DMZ SSH
+
+Test:
+
+    Test-NetConnection 10.10.60.10 -Port 22
+
+Result:
+
+    TcpTestSucceeded : False
+
+Status:
+
+**PASS — Blocked**
+
+This confirms the Domain Controller cannot be used to SSH directly into the DMZ.
+
+---
+
+# Active Directory Health Validation
+
+The following targeted Domain Controller checks were executed:
+
+    dcdiag /test:Advertising /test:SysVolCheck /test:NetLogons /test:Services /q
+
+Result:
+
+No output.
+
+With `dcdiag /q`, no output indicates that no failures were detected by the requested tests.
+
+Validated components:
+
+- Advertising
+- SYSVOL
+- NetLogons
+- Services
+
+Previous DNS validation also completed successfully.
+
+Status:
+
+**PASS**
+
+---
+
+# DMZ Validation
+
+Source host:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+The DMZ must communicate with SOCNET for monitoring and the Internet for approved updates while remaining isolated from protected internal services.
+
+---
+
+## DMZ → SOCNET Wazuh
+
+Test:
+
+    nc -zv -w 3 10.10.40.10 1514
+
+Result:
+
+    Connection succeeded
+
+Status:
+
+**PASS — Allowed**
+
+---
+
+## DMZ → CORPNET SMB
+
+Test:
+
+    nc -zv -w 3 10.10.20.20 445
+
+Result:
+
+    Connection timed out
+
+Status:
+
+**PASS — Blocked**
+
+---
+
+## DMZ → ADNET LDAP
+
+Test:
+
+    nc -zv -w 3 10.10.50.10 389
+
+Result:
+
+    Connection timed out
+
+Status:
+
+**PASS — Blocked**
+
+These results confirm the DMZ cannot freely initiate connections into protected workstation or identity infrastructure.
+
+---
+
+## DMZ → Internet HTTPS
+
+Test:
+
+    curl -I --connect-timeout 5 https://packages.wazuh.com
+
+Result:
+
+    HTTP/2 403
+
+Status:
+
+**PASS — Network connectivity confirmed**
+
+The `403` response confirms that:
+
+- DNS resolution succeeded
+- TCP connectivity succeeded
+- TLS negotiation succeeded
+- the remote HTTPS server received the request
+
+The application-level denial does not indicate a network failure.
+
+---
+
+# DMZ SSH Administration Validation
+
+The administrative path to `LAB-DMZ-01` was tested independently from the CORPNET workstation.
+
+## Approved Source
+
+`LAB-WIN-01 — 10.10.20.20`
+
+## Destination
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+## Service
+
+`TCP/22`
+
+Key-based authentication was configured using an Ed25519 SSH key.
+
+The following effective SSH settings were validated:
+
+    permitrootlogin no
+    pubkeyauthentication yes
+    passwordauthentication no
+    kbdinteractiveauthentication no
+
+Key-only authentication from `LAB-WIN-01` succeeded.
+
+Password-only authentication was then tested using:
+
+    ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password emmanuel@10.10.60.10
+
+Result:
+
+    Permission denied (publickey).
+
+Status:
+
+**PASS**
+
+This confirms:
+
+- SSH key authentication works
+- password SSH is disabled
+- root SSH is disabled
+- the approved administrative path remains functional
+
+---
+
+# Wazuh Agent Validation
+
+Wazuh agent status was verified from `LAB-SIEM-01`.
+
+Final result:
+
+    ID: 001, Name: LAB-WIN-01, IP: any, Active
+    ID: 002, Name: LAB-UBUNTU-01, IP: any, Active
+    ID: 003, Name: LAB-DC-01, IP: any, Active
+    ID: 004, Name: LAB-DMZ-01, IP: any, Active
+
+Status:
+
+**PASS**
+
+All monitored endpoints were connected during final validation.
+
+---
+
+# Wazuh Stack Validation
+
+The following services were checked on `LAB-SIEM-01`:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+
+Result:
+
+    active
+    active
+    active
+    active
+
+Status:
+
+**PASS**
+
+---
+
+# SIEM Storage Validation
+
+Filesystem:
+
+`/dev/mapper/ubuntu--vg-ubuntu--lv`
+
+Final observed state:
+
+    Size: 53G
+    Used: 25G
+    Available: 26G
+    Usage: 49%
+
+Status:
+
+**PASS**
+
+The SIEM had sufficient free storage during final infrastructure validation.
+
+---
+
+# Nginx Monitoring Validation
+
+A controlled request was generated from REDNET to the DMZ:
+
+    GET /wazuh-nginx-verify-01 HTTP/1.1
+
+Source:
+
+`10.10.10.10`
+
+Destination:
+
+`10.10.60.10`
+
+Nginx response:
+
+`404`
+
+The request appeared in:
+
+`/var/log/nginx/access.log`
+
+Wazuh generated:
+
+- Rule ID: `31101`
+- Description: `Web server 400 error code.`
+- Agent: `LAB-DMZ-01`
+- Source IP: `10.10.10.10`
+- Decoder: `web-accesslog`
+
+Status:
+
+**PASS**
+
+This proves the application-layer monitoring path:
+
+    Kali
+      |
+      v
+    Nginx
+      |
+      v
+    access.log
+      |
+      v
+    Wazuh Agent
+      |
+      v
+    LAB-SIEM-01
+
+---
+
+# Suricata Validation
+
+A controlled IDS validation was performed between REDNET and the DMZ.
+
+A temporary test resource returned:
+
+    uid=0(root) gid=0(root) groups=0(root)
+
+The request originated from:
+
+`LAB-KALI-01 — 10.10.10.10`
+
+The HTTP response originated from:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+Suricata generated:
+
+- Event type: `alert`
+- Interface: `em2`
+- Signature ID: `2100498`
+- Signature: `GPL ATTACK_RESPONSE id check returned root`
+- Category: `Potentially Bad Traffic`
+- Direction: `to_client`
+
+Observed response flow:
+
+    10.10.60.10:80
+        |
+        v
+    10.10.10.10
+
+Status:
+
+**PASS**
+
+---
+
+# Suricata → Wazuh Validation
+
+Suricata events are forwarded to:
+
+`LAB-SIEM-01`
+
+and written to:
+
+`/var/log/suricata/eve.json`
+
+Wazuh monitors the file using:
+
+    <log_format>json</log_format>
+
+The controlled IDS event generated:
+
+- Wazuh Rule ID: `86601`
+- Description: `Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
+
+Status:
+
+**PASS**
+
+This confirms the full detection path:
+
+    LAB-KALI-01
+        |
+        v
+    LAB-FW-01 / Suricata
+        |
+        v
+    LAB-DMZ-01
+        |
+        v
+    Suricata Alert
+        |
+        v
+    EVE JSON
+        |
+        v
+    LAB-SIEM-01
+        |
+        v
+    Wazuh Rule 86601
+
+---
+
+# Final Segmentation Matrix
+
+| Source | Destination | Service | Expected | Result |
+|---|---|---|---|---|
+| REDNET | DMZ | HTTP/80 | Allow | PASS |
+| REDNET | DMZ | SSH/22 | Block | PASS |
+| REDNET | CORPNET | SMB/445 | Block | PASS |
+| REDNET | ADNET | LDAP/389 | Block | PASS |
+| CORPNET | ADNET | DNS/53 | Allow | PASS |
+| CORPNET | ADNET | Kerberos/88 | Allow | PASS |
+| CORPNET | ADNET | LDAP/389 | Allow | PASS |
+| CORPNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| LAB-WIN-01 | DMZ | SSH/22 | Allow | PASS |
+| SERVERNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| SERVERNET | CORPNET | SMB/445 | Block | PASS |
+| SERVERNET | DMZ | SSH/22 | Block | PASS |
+| ADNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| ADNET | DMZ | SSH/22 | Block | PASS |
+| DMZ | SOCNET | Wazuh/1514 | Allow | PASS |
+| DMZ | CORPNET | SMB/445 | Block | PASS |
+| DMZ | ADNET | LDAP/389 | Block | PASS |
+| DMZ | Internet | HTTPS/443 | Allow | PASS |
+
+---
+
+# Security Conclusions
+
+The validation confirms that the lab behaves as a segmented enterprise-style network rather than a flat home lab.
+
+Key outcomes include:
+
+- REDNET cannot freely access enterprise infrastructure
+- Active Directory services are reachable only where required
+- the DMZ is isolated from protected internal systems
+- SSH administration is restricted to an approved workstation
+- password SSH is disabled
+- Wazuh monitoring paths are operational
+- all endpoint agents are active
+- Suricata sees REDNET-to-DMZ attack traffic
+- Suricata alerts reach Wazuh
+- Nginx activity reaches Wazuh
+- Domain Controller health is validated
+- SIEM services and storage are healthy
+
+---
+
+# Final Validation Status
+
+**Six-zone infrastructure validation: COMPLETE**
+
+Validated zones:
+
+- REDNET
+- CORPNET
+- SERVERNET
+- SOCNET
+- ADNET
+- DMZ
+
+Following successful validation, every virtual machine was placed at the common snapshot:
+
+`Final-Six-Zone-Validated-Baseline`
+
+This baseline represents the final verified infrastructure state before realistic SOC and Purple Team operational scenarios begin.
