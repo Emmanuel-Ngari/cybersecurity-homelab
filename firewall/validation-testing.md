@@ -1,1012 +1,1372 @@
-# OPNsense Firewall Validation and Security Testing
+# Firewall Validation and Testing
 
-## 1. Overview
+## Overview
 
-This document records the validation and security testing performed after migrating my cybersecurity homelab from a flat VirtualBox network architecture to a segmented OPNsense-controlled environment.
+This document records the firewall and segmentation validation performed throughout the Cybersecurity Home Lab, from the earliest flat-network phase through the final six-zone OPNsense architecture.
 
-The objective of the validation phase was to confirm that:
+The purpose of validation was to confirm that firewall policy behaved as intended in practice, not merely that rules appeared correct in the OPNsense interface.
 
-- OPNsense is the mandatory gateway for internal systems
-- Direct VirtualBox NAT bypasses are removed
-- Internet access works through OPNsense
-- DNS resolution works through OPNsense
-- Trusted management access is permitted
-- Unauthorized management access is blocked
-- Offensive-security traffic is controlled
-- Inter-zone segmentation is enforced
-- Stateful return traffic functions correctly
-- Explicit firewall rules function without the default LAN allow rule
+Testing covered:
 
----
+- basic host connectivity
+- allowed service access
+- blocked inter-zone access
+- firewall rule ordering
+- pending OPNsense configuration changes
+- Active Directory communication
+- Wazuh connectivity
+- Suricata visibility
+- DMZ exposure
+- restricted SSH administration
+- default-deny behaviour
+- final six-zone segmentation
 
-## 2. Final Security Zones
-
-The completed architecture contains three protected internal zones and one WAN interface.
-
-| Zone | Network | Gateway | Primary System |
-|---|---|---|---|
-| REDNET | `10.10.10.0/24` | `10.10.10.1` | Kali Linux |
-| CORPNET | `10.10.20.0/24` | `10.10.20.1` | Windows 11 |
-| SERVERNET | `10.10.30.0/24` | `10.10.30.1` | Ubuntu Server |
-| WAN | `10.0.2.0/24` | `10.0.2.2` | OPNsense WAN |
+The final environment was considered validated only after expected allowed paths succeeded and expected denied paths failed.
 
 ---
 
-## 3. Final Host Addressing
+# Historical Testing Approach
 
-### Kali Linux
+## Original Flat Lab
 
-Hostname / Role:
+The first version of the lab used:
 
-`LAB-KALI-01`
+`192.168.56.0/24`
 
-Security Zone:
+Primary hosts included:
 
-`REDNET`
+- Kali — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu — `192.168.56.30`
 
-IPv4 Address:
+Testing at this stage focused primarily on host-to-host reachability and service behaviour.
 
-`10.10.10.10/24`
+Examples included:
 
-Default Gateway:
+- ICMP reachability
+- SSH access
+- Nmap scanning
+- Hydra authentication testing
+- fail2ban response
+- service exposure
+- port-state changes
 
-`10.10.10.1`
-
-DNS Server:
-
-`10.10.10.1`
-
-Direct VirtualBox NAT:
-
-`Disabled`
+Because the network was largely flat, there was limited firewall segmentation to validate.
 
 ---
 
-### Windows 11
+# Transition to OPNsense
 
-Hostname / Role:
+When OPNsense was introduced, testing changed significantly.
+
+The key question was no longer simply:
+
+**Can Host A reach Host B?**
+
+The new questions became:
+
+- Should Host A be able to reach Host B?
+- Which service should be allowed?
+- Which traffic should be blocked?
+- Which firewall rule processed the packet?
+- Was the firewall change actually applied?
+- Was the traffic visible to the SIEM?
+- Was the result consistent with least privilege?
+
+This marked the beginning of policy-driven validation.
+
+---
+
+# Initial Four-Zone Validation
+
+The first OPNsense architecture introduced:
+
+- REDNET
+- CORPNET
+- SERVERNET
+- SOCNET
+
+Testing was performed from each source zone according to its intended role.
+
+---
+
+# CORPNET Early Validation
+
+Source:
 
 `LAB-WIN-01`
 
-Security Zone:
-
-`CORPNET`
-
-IPv4 Address:
-
-`10.10.20.20/24`
-
-Default Gateway:
-
-`10.10.20.1`
-
-DNS Server:
-
-`10.10.20.1`
-
-Direct VirtualBox NAT:
-
-`Disabled`
-
-Original LAB-NET adapter:
-
-`Disabled`
-
----
-
-### Ubuntu Server
-
-Hostname / Role:
-
-`LAB-UBUNTU-01`
-
-Security Zone:
-
-`SERVERNET`
-
-IPv4 Address:
-
-`10.10.30.30/24`
-
-Default Gateway:
-
-`10.10.30.1`
-
-DNS Server:
-
-`10.10.30.1`
-
-Direct VirtualBox NAT:
-
-`Disabled`
-
----
-
-## 4. Mandatory Firewall Routing
-
-After migration, internal systems no longer connect directly to the Internet using their own VirtualBox NAT adapters.
-
-The final Internet path is:
-
-Internal VM  
-↓  
-Security Zone  
-↓  
-OPNsense  
-↓  
-WAN  
-↓  
-VirtualBox NAT  
-↓  
-Internet
-
-Examples:
-
-Kali:
-
-`10.10.10.10 → 10.10.10.1 → OPNsense → WAN → Internet`
-
-Windows:
-
-`10.10.20.20 → 10.10.20.1 → OPNsense → WAN → Internet`
-
-Ubuntu:
-
-`10.10.30.30 → 10.10.30.1 → OPNsense → WAN → Internet`
-
-This ensures firewall policy and logging can be applied to internal traffic.
-
----
-
-## 5. Outbound NAT Validation
-
-OPNsense was configured using:
-
-`Automatic Source NAT rule generation`
-
-The automatically generated outbound NAT rules included:
-
-- CORPNET
-- REDNET
-- SERVERNET
-
-Internal addresses are translated to the OPNsense WAN address before traffic is sent toward the Internet.
-
----
-
-## 6. Pre-Cutover NAT Testing
-
-Before disabling the direct NAT adapters, temporary host routes were created to force traffic toward OPNsense.
-
-A test destination of:
-
-`1.1.1.1`
-
-was used.
-
-The objective was to confirm that each security zone could successfully reach the Internet through OPNsense before removing rollback connectivity.
-
-Results:
-
-| System | OPNsense Gateway | Internet Test |
-|---|---|---|
-| Kali | `10.10.10.1` | PASS |
-| Windows | `10.10.20.1` | PASS |
-| Ubuntu | `10.10.30.1` | PASS |
-
-This confirmed outbound NAT functionality before final cutover.
-
----
-
-## 7. Kali REDNET Final Cutover
-
-Kali Linux was migrated completely onto REDNET.
-
-Final address:
-
-`10.10.10.10/24`
-
-Final default route:
-
-`default via 10.10.10.1`
-
-The direct NAT adapter was disabled.
-
-During the cutover, VirtualBox interface numbering changed after the original NAT adapter was disabled.
-
-The REDNET adapter became:
-
-`eth0`
-
-The NetworkManager connection was rebound to the remaining interface using its MAC address and interface name.
-
-After correction, Kali successfully obtained:
-
-`10.10.10.10/24`
-
-and the correct OPNsense default gateway.
-
----
-
-## 8. Kali Internet Validation
-
-The following tests were performed from Kali.
-
-### Gateway Test
-
-Command:
-
-`ping -c 4 10.10.10.1`
-
-Result:
-
-`PASS`
-
-### Internet ICMP Test
-
-Command:
-
-`ping -c 4 1.1.1.1`
-
-Result:
-
-`PASS`
-
-### DNS Test
-
-Command:
-
-`nslookup opnsense.org 10.10.10.1`
-
-Result:
-
-`PASS`
-
-### HTTPS Internet Test
-
-Command:
-
-`curl -I --connect-timeout 10 https://example.com`
-
-Result:
-
-`PASS`
-
-These tests confirmed that Kali can access the Internet entirely through OPNsense.
-
----
-
-## 9. Kali Firewall Management Isolation
-
-Kali was intentionally prevented from accessing the OPNsense Web GUI.
-
-Command:
-
-`curl -k --connect-timeout 5 https://10.10.10.1`
-
-Result:
-
-`Connection timed out`
-
-Status:
-
-`BLOCKED AS DESIGNED`
-
-This validated:
-
-`BLOCK - REDNET to OPNsense Management`
-
-Kali can use specifically authorized firewall infrastructure services while remaining unable to manage the firewall.
-
----
-
-## 10. Kali to CORPNET Isolation
-
-Kali attempted to reach the Windows management workstation.
-
-Command:
-
-`ping -c 4 10.10.20.20`
-
-Result:
-
-`100% packet loss`
-
-Status:
-
-`BLOCKED AS DESIGNED`
-
-This validates REDNET-to-CORPNET segmentation.
-
----
-
-## 11. Kali to Ubuntu Offensive Path
-
-Kali was intentionally permitted to reach the Ubuntu Server in SERVERNET.
-
-Command:
-
-`ping -c 4 10.10.30.30`
-
-Result:
-
-`PASS`
-
-This confirms the authorized path:
-
-REDNET  
-↓  
-OPNsense  
-↓  
-SERVERNET
-
----
-
-## 12. Kali SSH Enumeration Test
-
-Kali performed an Nmap TCP connection scan against Ubuntu SSH.
-
-Command:
-
-`nmap -sT -Pn -p 22 10.10.30.30`
-
-Result:
-
-`22/tcp open ssh`
-
-This confirmed that Kali could reach the approved SERVERNET target through OPNsense.
-
-This provides a controlled pathway for future offensive-security exercises.
-
----
-
-## 13. Ubuntu SERVERNET Final Cutover
-
-Ubuntu Server was fully migrated to SERVERNET.
-
-Final address:
-
-`10.10.30.30/24`
-
-Final gateway:
-
-`10.10.30.1`
-
-Final DNS server:
-
-`10.10.30.1`
-
-The direct VirtualBox NAT adapter was disabled.
-
-The SERVERNET interface was pinned using its MAC address through Netplan to prevent interface renumbering.
-
----
-
-## 14. Ubuntu Routing Validation
-
-The final Ubuntu routing configuration included:
-
-`default via 10.10.30.1`
-
-and explicit routes for:
-
-`10.10.10.0/24`
-
-and:
+Network:
 
 `10.10.20.0/24`
 
-through OPNsense.
+The corporate workstation was used to validate approved enterprise and administrative connectivity.
 
-No direct route through:
+Tests included:
 
-`10.0.2.2`
-
-remained after the final cutover.
-
----
-
-## 15. Ubuntu Internet Validation
-
-Ubuntu successfully completed the following tests.
-
-### Gateway
-
-`ping -c 4 10.10.30.1`
-
-Result:
-
-`PASS`
-
-### Internet
-
-`ping -c 4 1.1.1.1`
-
-Result:
-
-`PASS`
-
-### DNS
-
-`nslookup opnsense.org 10.10.30.1`
-
-Result:
-
-`PASS`
-
-### HTTPS
-
-`curl -I --connect-timeout 10 https://example.com`
-
-Result:
-
-`PASS`
-
-This verified full Internet connectivity through OPNsense.
+- OPNsense management access
+- DNS
+- Internet access
+- selected SERVERNET administration
+- isolation from REDNET
 
 ---
 
-## 16. Ubuntu to REDNET Isolation
+## CORPNET → OPNsense Management
 
-Ubuntu attempted to initiate communication toward Kali Linux.
+Expected:
+
+`ALLOW`
+
+Purpose:
+
+Permit the approved workstation to administer the firewall.
+
+Validation method:
+
+Web access to the OPNsense management interface.
+
+Result:
+
+**PASS**
+
+---
+
+## CORPNET → DNS
+
+Expected:
+
+`ALLOW`
+
+Purpose:
+
+Provide name resolution.
+
+Result:
+
+**PASS**
+
+---
+
+## CORPNET → SERVERNET SSH
 
 Destination:
 
-`10.10.10.10`
+`LAB-UBUNTU-01`
+
+Port:
+
+`TCP/22`
+
+Expected:
+
+`ALLOW`
+
+Purpose:
+
+Provide approved administration of the internal Linux server during the early segmented phase.
 
 Result:
 
-`BLOCKED`
-
-Status:
-
-`PASS`
-
-This confirms that SERVERNET systems cannot initiate unauthorized connections toward the offensive-security network.
+**PASS**
 
 ---
 
-## 17. Ubuntu to CORPNET Isolation
+## CORPNET → REDNET
 
-Ubuntu attempted to initiate communication toward the Windows management workstation.
+Expected:
+
+`BLOCK`
+
+Purpose:
+
+Prevent unnecessary corporate-to-attacker communication.
+
+Result:
+
+**PASS**
+
+---
+
+# REDNET Early Validation
+
+Source:
+
+`LAB-KALI-01`
+
+Network:
+
+`10.10.10.0/24`
+
+REDNET represented the offensive network.
+
+The objective was to preserve controlled testing paths while preventing broad internal access.
+
+---
+
+## REDNET → DNS
+
+Expected:
+
+`ALLOW`
+
+Result:
+
+**PASS**
+
+---
+
+## REDNET → Internet
+
+Expected:
+
+`ALLOW`
+
+Purpose:
+
+Permit updates and security-tool access.
+
+Result:
+
+**PASS**
+
+---
+
+## REDNET → SERVERNET
+
+Selected attack paths were allowed during controlled exercises.
+
+Examples included:
+
+- Nmap
+- SSH enumeration
+- Hydra
+- fail2ban validation
+
+Result:
+
+**PASS**
+
+---
+
+## REDNET → CORPNET
+
+Expected:
+
+`BLOCK`
+
+Purpose:
+
+Prevent Kali from freely accessing the Windows workstation.
+
+Result:
+
+**PASS**
+
+---
+
+## REDNET → OPNsense Management
+
+Expected:
+
+`BLOCK`
+
+Purpose:
+
+Prevent the attacker network from administering the firewall.
+
+Result:
+
+**PASS**
+
+---
+
+# SERVERNET Early Validation
+
+Source:
+
+`LAB-UBUNTU-01`
+
+Network:
+
+`10.10.30.0/24`
+
+The server was tested for required infrastructure access and restricted east-west communication.
+
+Validated behaviour included:
+
+- DNS allowed
+- NTP allowed
+- Internet access allowed where required
+- unsolicited CORPNET access restricted
+- unsolicited REDNET access restricted
+
+These tests confirmed the move away from the original flat network.
+
+---
+
+# SOCNET Validation
+
+SOCNET was introduced when Wazuh became the central SIEM.
+
+Primary host:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+Required Wazuh paths included:
+
+- TCP/1514
+- TCP/1515 where enrollment was required
+
+Endpoints were tested before and after Wazuh deployment to distinguish:
+
+- network failures
+- agent failures
+- enrollment failures
+- manager-side failures
+
+---
+
+# Wazuh Port Testing
+
+A common validation pattern became:
+
+    nc -zv -w 3 10.10.40.10 1514
+
+or on Windows:
+
+    Test-NetConnection 10.10.40.10 -Port 1514
+
+This was more useful than relying only on ping.
+
+---
+
+# ICMP vs Service Connectivity
+
+One important lesson occurred when:
+
+`LAB-UBUNTU-01`
+
+could not ping:
+
+`LAB-SIEM-01`
+
+but could connect successfully to:
+
+`TCP/1514`
+
+The correct interpretation was:
+
+- ICMP blocked
+- Wazuh service path healthy
+
+This reinforced the rule:
+
+**Validate the actual required service, not only ICMP.**
+
+---
+
+# OPNsense Firewall Log Validation
+
+OPNsense Live View became a core validation tool.
+
+It was used to confirm:
+
+- traffic reached the firewall
+- the expected interface processed the traffic
+- the expected rule matched
+- the firewall action was allow or block
+- rule order was correct
+
+This was especially important when service state and routing appeared healthy but connectivity still failed.
+
+---
+
+# Firewall Rule Order Validation
+
+A repeated pattern throughout the build was:
+
+    Specific Allow
+    Broad Deny
+
+Example:
+
+    ALLOW - REDNET to LAB-DMZ-01 HTTP
+    BLOCK - REDNET to Unauthorized Private Networks
+
+Testing confirmed that placing the broad deny above the exception prevented the specific allow from functioning.
+
+This demonstrated that rule order is part of firewall policy, not merely presentation.
+
+---
+
+# OPNsense Apply Changes Validation
+
+One of the most important troubleshooting events occurred during REDNET-to-DMZ HTTP exposure.
+
+The rule was:
+
+- defined correctly
+- placed correctly
+- saved correctly
+
+but traffic was still blocked.
+
+OPNsense Live View showed the old deny behaviour.
+
+The cause was that the pending ruleset had not been applied.
+
+The red:
+
+`Apply`
+
+button remained visible.
+
+After applying the configuration, the connection succeeded immediately.
+
+From that point forward, firewall validation included:
+
+1. Save.
+2. Confirm rule order.
+3. Apply changes.
+4. Confirm the pending-change banner disappears.
+5. Generate fresh traffic.
+6. Review Live View.
+7. Confirm expected result.
+
+---
+
+# Firewall Logging to Wazuh Validation
+
+OPNsense firewall telemetry was later forwarded into Wazuh.
+
+This allowed deny events to be investigated centrally.
+
+A firewall correlation rule was successfully validated:
+
+`Wazuh Rule 87702`
+
+This confirmed that firewall policy could be observed from the SOC environment rather than only through the OPNsense GUI.
+
+---
+
+# Suricata Validation
+
+Suricata was deployed on OPNsense after basic firewall segmentation was operational.
+
+Primary monitored interface:
+
+`em2`
+
+This corresponded to REDNET traffic.
+
+Initial Suricata validation confirmed the IDS could generate alerts from controlled traffic.
+
+---
+
+# Suricata Signature Test
+
+A known test condition produced:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Signature ID:
+
+`2100498`
+
+This became a useful controlled validation signature.
+
+---
+
+# Suricata Telemetry to Wazuh
+
+Suricata EVE JSON events were forwarded to:
+
+`LAB-SIEM-01`
+
+using:
+
+`UDP/5514`
+
+and written to:
+
+`/var/log/suricata/eve.json`
+
+Wazuh monitored that file using:
+
+`json`
+
+log format.
+
+The Suricata event later generated:
+
+`Wazuh Rule 86601`
+
+This confirmed the end-to-end IDS pipeline.
+
+---
+
+# ADNET Validation
+
+ADNET was introduced later in the project.
+
+Network:
+
+`10.10.50.0/24`
+
+Primary host:
+
+`LAB-DC-01 — 10.10.50.10`
+
+The objective was to permit legitimate domain functionality while preserving identity isolation.
+
+---
+
+# Active Directory Connectivity Testing
+
+The corporate workstation was used to validate required domain services.
+
+Final sampled tests included:
+
+## DNS
+
+    Test-NetConnection 10.10.50.10 -Port 53
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+---
+
+## Kerberos
+
+    Test-NetConnection 10.10.50.10 -Port 88
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+---
+
+## LDAP
+
+    Test-NetConnection 10.10.50.10 -Port 389
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+---
+
+# Broader Active Directory Rule Set
+
+Although the final spot checks directly tested DNS, Kerberos, and LDAP, the firewall supported the wider service set required for normal Active Directory operation.
+
+Important TCP services included:
+
+- `53`
+- `88`
+- `135`
+- `389`
+- `445`
+- `464`
+- `3268`
+- `49152:65535`
+
+Important UDP services included:
+
+- `53`
+- `88`
+- `123`
+- `389`
+- `464`
+
+The successful domain join, Group Policy operation, authentication, SYSVOL, and `dcdiag` health checks provided additional validation beyond individual port testing.
+
+---
+
+# Domain Controller Health Validation
+
+Targeted validation used:
+
+    dcdiag /test:Advertising /test:SysVolCheck /test:NetLogons /test:Services /q
+
+Result:
+
+No output.
+
+With `dcdiag /q`, no output indicated no detected failures for the requested tests.
+
+Additional DNS validation was also completed successfully.
+
+Status:
+
+**PASS**
+
+---
+
+# REDNET → ADNET Validation
+
+Test:
+
+    nc -zv -w 3 10.10.50.10 389
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Connection timed out.
+
+Status:
+
+**PASS**
+
+This confirmed that the offensive network could not directly access LDAP on the Domain Controller.
+
+---
+
+# ADNET → SOCNET Validation
+
+Test:
+
+    Test-NetConnection 10.10.40.10 -Port 1514
+
+Expected:
+
+`ALLOW`
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+This confirmed Domain Controller telemetry could reach Wazuh.
+
+---
+
+# DMZ Introduction
+
+The DMZ was the final major security zone added to the firewall.
+
+Network:
+
+`10.10.60.0/24`
+
+Primary host:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+Primary service:
+
+Nginx on TCP/80.
+
+The DMZ was validated in multiple stages:
+
+1. base network
+2. outbound connectivity
+3. internal isolation
+4. Wazuh connectivity
+5. REDNET web exposure
+6. CORPNET SSH administration
+7. Suricata visibility
+8. final six-zone validation
+
+---
+
+# DMZ Base Networking Validation
+
+The DMZ host was configured with:
+
+    IP: 10.10.60.10
+    Gateway: 10.10.60.1
+    DNS: 10.10.60.1
+
+Validation confirmed:
+
+- interface up
+- correct route
+- DNS operation
+- Internet access
+- internal blocking
+
+---
+
+# DMZ → Wazuh Pre-Installation Validation
+
+Before installing the Wazuh agent, the required ports were tested.
+
+Tests:
+
+    nc -zv -w 3 10.10.40.10 1514
+    nc -zv -w 3 10.10.40.10 1515
+
+Results:
+
+Both succeeded.
+
+This confirmed that firewall policy was correct before introducing agent software.
+
+---
+
+# DMZ → CORPNET Block Validation
+
+Test:
+
+    nc -zv -w 3 10.10.20.20 445
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Timed out.
+
+Status:
+
+**PASS**
+
+---
+
+# DMZ → ADNET Block Validation
+
+Test:
+
+    nc -zv -w 3 10.10.50.10 389
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Timed out.
+
+Status:
+
+**PASS**
+
+---
+
+# DMZ → Internet HTTPS Validation
+
+Test:
+
+    curl -I --connect-timeout 5 https://packages.wazuh.com
+
+Result:
+
+`HTTP/2 403`
+
+Interpretation:
+
+The remote application denied the request, but the network test still proved:
+
+- DNS resolution
+- routing
+- TCP/443
+- TLS
+- remote server reachability
+
+Status:
+
+**PASS**
+
+---
+
+# DMZ Default-Deny Validation
+
+An outbound connection using an unapproved TCP port was blocked by:
+
+`Default deny / state violation rule`
+
+This confirmed that the DMZ did not have unrestricted outbound Internet access.
+
+---
+
+# REDNET → DMZ HTTP Validation
+
+Source:
+
+`LAB-KALI-01 — 10.10.10.10`
 
 Destination:
 
-`10.10.20.20`
+`LAB-DMZ-01 — 10.10.60.10`
 
-Result:
+Service:
 
-`BLOCKED`
+`TCP/80`
 
-Status:
+Test:
 
-`PASS`
+    curl -I http://10.10.60.10
 
-This helps reduce lateral-movement opportunities if a server becomes compromised.
+Expected:
 
----
+`ALLOW`
 
-## 18. Windows CORPNET Final Cutover
-
-Windows was migrated completely to CORPNET.
-
-Final interface:
-
-`CORP-NET`
-
-IPv4 Address:
-
-`10.10.20.20`
-
-Default Gateway:
-
-`10.10.20.1`
-
-DNS Server:
-
-`10.10.20.1`
-
-The direct NAT adapter was disabled.
-
-The original LAB-NET adapter was also disabled.
-
-Windows therefore has no direct VirtualBox NAT bypass.
-
----
-
-## 19. Windows Default Gateway Validation
-
-PowerShell confirmed the final default route:
-
-`0.0.0.0/0 → 10.10.20.1`
-
-through:
-
-`CORP-NET`
-
-No default route through:
-
-`10.0.2.2`
-
-remained.
-
-This confirmed that OPNsense became the sole IPv4 gateway for Windows.
-
----
-
-## 20. Windows Internet Validation
-
-Windows successfully completed an Internet ICMP test.
-
-Command:
-
-`ping 1.1.1.1`
-
-Result:
-
-`4 packets sent, 4 received, 0% loss`
-
-Status:
-
-`PASS`
-
-HTTPS connectivity was tested using:
-
-`curl.exe -I --connect-timeout 10 https://example.com`
-
-Result:
+Final result:
 
 `HTTP/1.1 200 OK`
 
 Status:
 
-`PASS`
+**PASS**
 
 ---
 
-## 21. Windows DNS Validation
+# REDNET → DMZ SSH Validation
 
-PowerShell command:
+Test:
 
-`Resolve-DnsName opnsense.org -Server 10.10.20.1`
+    nc -zv -w 3 10.10.60.10 22
+
+Expected:
+
+`BLOCK`
 
 Result:
 
-Successful IPv4 and IPv6 DNS records were returned.
+Connection timed out.
+
+OPNsense logging confirmed the traffic was blocked by the REDNET private-network deny policy.
 
 Status:
 
-`PASS`
-
-This confirmed OPNsense DNS functionality from CORPNET.
+**PASS**
 
 ---
 
-## 22. Windows Firewall Management Access
+# REDNET → CORPNET SMB Validation
 
-The Windows management workstation tested OPNsense HTTPS.
+Test:
 
-Command:
+    nc -zv -w 3 10.10.20.20 445
 
-`Test-NetConnection 10.10.20.1 -Port 443`
+Expected:
+
+`BLOCK`
 
 Result:
 
-`TcpTestSucceeded : True`
+Connection timed out.
 
 Status:
 
-`PASS`
-
-This validates the explicit rule:
-
-`ALLOW - Admin Workstation to OPNsense HTTPS`
+**PASS**
 
 ---
 
-## 23. CORPNET Gateway ICMP
+# CORPNET → DMZ SSH Validation
 
-Windows attempted to ping:
+Initial test from:
 
-`10.10.20.1`
+`LAB-WIN-01`
+
+to:
+
+`LAB-DMZ-01:22`
+
+timed out.
+
+This confirmed there was no pre-existing management path.
+
+A narrow rule was then introduced:
+
+`ADMIN_WORKSTATION → LAB_DMZ_01 TCP/22`
+
+After applying the rule, SSH succeeded.
+
+Status:
+
+**PASS**
+
+---
+
+# SSH Network Restriction Validation
+
+Final source restrictions were tested.
+
+## CORPNET Admin Workstation
+
+    LAB-WIN-01 → LAB-DMZ-01:22
 
 Result:
 
-`100% packet loss`
+`ALLOW`
 
-This is expected under the current policy.
+## REDNET
 
-CORPNET does not currently have an explicit ICMP echo permission to the firewall.
+    LAB-KALI-01 → LAB-DMZ-01:22
 
-HTTPS management, DNS, and NTP are explicitly permitted while other firewall services are restricted.
+Result:
 
-Therefore:
+`BLOCK`
 
-`Windows → OPNsense ICMP`
+## ADNET
 
-is:
+    LAB-DC-01 → LAB-DMZ-01:22
 
-`BLOCKED AS DESIGNED`
+Result:
+
+`BLOCK`
+
+This confirmed that SSH administration was limited to the intended source.
 
 ---
 
-## 24. Windows to Ubuntu Administration
+# SSH Authentication Validation
 
-Windows tested SSH connectivity to Ubuntu Server.
+After network access was restricted, host-level authentication was hardened.
 
-Command:
+Effective SSH policy:
 
-`Test-NetConnection 10.10.30.30 -Port 22`
+    permitrootlogin no
+    pubkeyauthentication yes
+    passwordauthentication no
+    kbdinteractiveauthentication no
 
-Final result:
+Public-key authentication from `LAB-WIN-01` succeeded.
 
-`TcpTestSucceeded : True`
+Password-only authentication returned:
+
+    Permission denied (publickey).
+
+This provided defense in depth:
+
+- firewall source restriction
+- key-only SSH
+- no root SSH
+- no password SSH
+
+---
+
+# Nginx Monitoring Validation
+
+A controlled request was generated from REDNET:
+
+    GET /wazuh-nginx-verify-01 HTTP/1.1
 
 Source:
 
-`10.10.20.20`
+`10.10.10.10`
 
-Interface:
+Nginx returned:
 
-`CORP-NET`
+`404`
 
-Destination:
+The request appeared in:
 
-`10.10.30.30`
+`/var/log/nginx/access.log`
 
-Port:
+Wazuh generated:
 
-`22`
+- Rule `31101`
+- Description: `Web server 400 error code.`
+- Agent: `LAB-DMZ-01`
+- Source IP: `10.10.10.10`
+- Decoder: `web-accesslog`
 
 Status:
 
-`PASS`
-
-This validates:
-
-`ALLOW - Admin Workstation to SERVERNET Admin Services`
+**PASS**
 
 ---
 
-## 25. Windows to REDNET Isolation
+# REDNET → DMZ Suricata Visibility Test
 
-Windows attempted to ping Kali Linux.
+A controlled HTTP resource was temporarily created on the DMZ containing:
 
-Command:
+    uid=0(root) gid=0(root) groups=0(root)
 
-`ping 10.10.10.10`
+Kali requested the resource.
+
+The request successfully traversed:
+
+    REDNET
+       |
+       v
+    OPNsense
+       |
+       v
+    DMZ
+
+Suricata generated:
+
+- Event type: `alert`
+- Interface: `em2`
+- Signature ID: `2100498`
+- Signature: `GPL ATTACK_RESPONSE id check returned root`
+- Source: `10.10.60.10:80`
+- Destination: `10.10.10.10`
+- Direction: `to_client`
+
+Status:
+
+**PASS**
+
+---
+
+# Suricata → Wazuh Validation
+
+The same controlled event was verified on the SIEM.
+
+Wazuh generated:
+
+- Rule ID: `86601`
+- Description: `Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
+
+Status:
+
+**PASS**
+
+This confirmed the full chain:
+
+    Kali
+      |
+      v
+    OPNsense Firewall
+      |
+      v
+    Suricata
+      |
+      v
+    DMZ
+      |
+      v
+    EVE JSON
+      |
+      v
+    Wazuh
+      |
+      v
+    SOC Alert
+
+---
+
+# SERVERNET Final Validation
+
+Source:
+
+`LAB-UBUNTU-01 — 10.10.30.30`
+
+## SERVERNET → SOCNET Wazuh
+
+    nc -zv -w 3 10.10.40.10 1514
 
 Result:
 
-`100% packet loss`
+Connection succeeded.
 
 Status:
 
-`BLOCKED AS DESIGNED`
-
-This confirms that CORPNET does not receive unrestricted access to REDNET.
+**PASS**
 
 ---
 
-## 26. Default LAN Rule Removal
+## SERVERNET → CORPNET SMB
 
-During the firewall deployment, the original OPNsense LAN allow rules were temporarily retained as a rollback mechanism.
+    nc -zv -w 3 10.10.20.20 445
 
-After explicit policies were created and tested, the following rules were disabled:
+Result:
 
-`Default allow LAN to any rule`
+Timed out.
 
-`Default allow LAN IPv6 to any rule`
+Status:
 
-The environment was then tested again.
-
-Critical functionality remained operational using only the custom explicit rules.
-
-This confirmed that the lab no longer depends on OPNsense's broad default LAN trust policy.
+**PASS**
 
 ---
 
-## 27. Explicit CORPNET Policy Validation
+## SERVERNET → DMZ SSH
 
-After disabling the default LAN rules:
+    nc -zv -w 3 10.10.60.10 22
 
-| Test | Result |
-|---|---|
-| Windows → OPNsense HTTPS | PASS |
-| Windows → OPNsense DNS | PASS |
-| Windows → Internet | PASS |
-| Windows → Ubuntu SSH | PASS |
-| Windows → REDNET | BLOCK |
-| Windows → Unauthorized Firewall Services | BLOCK |
+Result:
 
-The CORPNET policy is therefore operating using least-privilege firewall rules.
+Timed out.
+
+Status:
+
+**PASS**
 
 ---
 
-## 28. Explicit REDNET Policy Validation
+# CORPNET Final Validation
 
-| Test | Result |
-|---|---|
-| Kali → OPNsense ICMP | PASS |
-| Kali → OPNsense DNS | PASS |
-| Kali → Internet | PASS |
-| Kali → OPNsense HTTPS | BLOCK |
-| Kali → CORPNET | BLOCK |
-| Kali → Ubuntu | PASS |
-| Kali → Ubuntu SSH | PASS |
+Source:
 
-The REDNET network is functional for offensive-security testing while remaining isolated from trusted administrative systems.
+`LAB-WIN-01 — 10.10.20.20`
 
----
+Validated:
 
-## 29. Explicit SERVERNET Policy Validation
-
-| Test | Result |
-|---|---|
-| Ubuntu → OPNsense Gateway | PASS |
-| Ubuntu → OPNsense DNS | PASS |
-| Ubuntu → Internet | PASS |
-| Ubuntu → REDNET | BLOCK |
-| Ubuntu → CORPNET | BLOCK |
-| Kali-initiated traffic → Ubuntu | PASS |
-| Windows administrative SSH → Ubuntu | PASS |
-
-This confirms that SERVERNET operates as a protected server zone.
+    CORPNET → ADNET DNS/53        PASS
+    CORPNET → ADNET Kerberos/88   PASS
+    CORPNET → ADNET LDAP/389      PASS
+    CORPNET → SOCNET Wazuh/1514   PASS
+    LAB-WIN-01 → DMZ SSH/22       PASS
 
 ---
 
-## 30. Stateful Firewall Validation
+# ADNET Final Validation
 
-The firewall allows established return traffic without creating unnecessary reverse-direction permissions.
+Source:
+
+`LAB-DC-01 — 10.10.50.10`
+
+Validated:
+
+    ADNET → SOCNET Wazuh/1514   PASS
+    ADNET → DMZ SSH/22          BLOCKED AS DESIGNED
+
+Domain Controller health:
+
+`PASS`
+
+---
+
+# DMZ Final Validation
+
+Source:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+Validated:
+
+    DMZ → SOCNET Wazuh/1514   PASS
+    DMZ → CORPNET SMB/445     BLOCKED
+    DMZ → ADNET LDAP/389      BLOCKED
+    DMZ → Internet HTTPS      PASS
+
+---
+
+# Wazuh Agent Final Validation
+
+Final agent state:
+
+    ID: 001, Name: LAB-WIN-01, IP: any, Active
+    ID: 002, Name: LAB-UBUNTU-01, IP: any, Active
+    ID: 003, Name: LAB-DC-01, IP: any, Active
+    ID: 004, Name: LAB-DMZ-01, IP: any, Active
+
+Status:
+
+**PASS**
+
+---
+
+# Wazuh Stack Validation
+
+The following services were confirmed active:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+
+Status:
+
+**PASS**
+
+---
+
+# SIEM Storage Validation
+
+Observed final state:
+
+    Filesystem: /dev/mapper/ubuntu--vg-ubuntu--lv
+    Size: 53G
+    Used: 25G
+    Available: 26G
+    Usage: 49%
+
+Status:
+
+**PASS**
+
+---
+
+# Final Six-Zone Validation Matrix
+
+| Source | Destination | Service | Expected | Result |
+|---|---|---|---|---|
+| REDNET | DMZ | HTTP/80 | Allow | PASS |
+| REDNET | DMZ | SSH/22 | Block | PASS |
+| REDNET | CORPNET | SMB/445 | Block | PASS |
+| REDNET | ADNET | LDAP/389 | Block | PASS |
+| CORPNET | ADNET | DNS/53 | Allow | PASS |
+| CORPNET | ADNET | Kerberos/88 | Allow | PASS |
+| CORPNET | ADNET | LDAP/389 | Allow | PASS |
+| CORPNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| LAB-WIN-01 | DMZ | SSH/22 | Allow | PASS |
+| SERVERNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| SERVERNET | CORPNET | SMB/445 | Block | PASS |
+| SERVERNET | DMZ | SSH/22 | Block | PASS |
+| ADNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| ADNET | DMZ | SSH/22 | Block | PASS |
+| DMZ | SOCNET | Wazuh/1514 | Allow | PASS |
+| DMZ | CORPNET | SMB/445 | Block | PASS |
+| DMZ | ADNET | LDAP/389 | Block | PASS |
+| DMZ | Internet | HTTPS/443 | Allow | PASS |
+
+---
+
+# Validation Philosophy
+
+The project adopted several validation principles.
+
+## Test Both Allowed and Blocked Traffic
+
+A firewall is not considered validated by testing only permitted connections.
+
+Denied paths must also be tested.
+
+---
+
+## Use the Real Service
+
+Where possible, test the actual application port rather than relying only on ping.
+
+---
+
+## Review Firewall Logs
+
+A timeout alone does not prove which control blocked the traffic.
+
+OPNsense logs were used to identify the responsible rule.
+
+---
+
+## Confirm Source Host
+
+The same destination can behave differently depending on the source zone.
+
+---
+
+## Generate Fresh Traffic
+
+After changing firewall policy, new connections were generated instead of relying on existing states.
+
+---
+
+## Validate End to End
+
+For monitored services, success meant more than network reachability.
 
 Example:
 
-Kali initiates:
-
-`10.10.10.10 → 10.10.30.30:22`
-
-OPNsense permits the connection through the REDNET policy.
-
-Ubuntu's response traffic returns through the existing firewall state.
-
-Ubuntu does not require permission to initiate arbitrary new connections into REDNET.
-
-The same principle applies to Windows administrative connections toward SERVERNET.
-
----
-
-## 31. Final Segmentation Matrix
-
-| Source | Destination | Result |
-|---|---|---|
-| Windows / CORPNET | OPNsense HTTPS | ALLOW |
-| Windows / CORPNET | OPNsense DNS | ALLOW |
-| Windows / CORPNET | Internet | ALLOW |
-| Windows / CORPNET | Ubuntu SSH | ALLOW |
-| Windows / CORPNET | Kali | BLOCK |
-| Kali / REDNET | Internet | ALLOW |
-| Kali / REDNET | OPNsense DNS | ALLOW |
-| Kali / REDNET | OPNsense HTTPS | BLOCK |
-| Kali / REDNET | Windows | BLOCK |
-| Kali / REDNET | Ubuntu | ALLOW |
-| Ubuntu / SERVERNET | Internet | ALLOW |
-| Ubuntu / SERVERNET | OPNsense DNS | ALLOW |
-| Ubuntu / SERVERNET | Windows | BLOCK |
-| Ubuntu / SERVERNET | Kali | BLOCK |
+    Attack
+      |
+      v
+    Firewall
+      |
+      v
+    IDS
+      |
+      v
+    Application
+      |
+      v
+    Log
+      |
+      v
+    SIEM
+      |
+      v
+    Detection
 
 ---
 
-## 32. Final Architecture
+# Snapshot and Validation Workflow
 
-The validated architecture is:
+Significant firewall changes followed the workflow:
 
-Internet  
-↓  
-VirtualBox NAT  
-↓  
-OPNsense WAN  
-↓  
-Firewall / NAT / Routing / Logging  
-↓  
-Security Zones
+    Snapshot
+        |
+        v
+    Configure
+        |
+        v
+    Save
+        |
+        v
+    Apply
+        |
+        v
+    Test
+        |
+        v
+    Review Logs
+        |
+        v
+    Verify Detection
+        |
+        v
+    Document
 
-REDNET:
-
-`10.10.10.0/24`
-
-Kali:
-
-`10.10.10.10`
-
-CORPNET:
-
-`10.10.20.0/24`
-
-Windows:
-
-`10.10.20.20`
-
-SERVERNET:
-
-`10.10.30.0/24`
-
-Ubuntu:
-
-`10.10.30.30`
-
-All communication between internal security zones is routed through OPNsense.
+This helped preserve known-good states throughout the build.
 
 ---
 
-## 33. Recovery Strategy
+# Historical vs Current Validation
 
-Recovery points were created throughout the migration process.
+This document intentionally records validation from the beginning of the project through the final architecture.
 
-VirtualBox snapshots were taken:
+Earlier sections therefore include tests that relate to:
 
-- Before major network migrations
-- Before final NAT removal
-- After successful zone migration
-- After firewall policy verification
+- the original flat lab
+- the initial four-zone design
+- temporary attacker-to-server paths
+- early workstation administration
+- pre-Active Directory networking
 
-OPNsense configuration backups were also exported.
+These were valid at their respective stages.
 
-Configuration backup files are stored privately and are not committed to the public GitHub repository.
-
----
-
-## 34. Evidence Collection
-
-Evidence collected during validation included:
-
-- `ip addr`
-- `ip route`
-- NetworkManager configuration
-- Netplan configuration
-- PowerShell networking output
-- Firewall rule screenshots
-- OPNsense interface configuration
-- OPNsense Live View logs
-- DNS lookup results
-- ICMP tests
-- TCP connectivity tests
-- Nmap results
-- HTTP/HTTPS connectivity tests
-- Routing-table verification
-
-Screenshots may be added to the repository after reviewing them for sensitive information.
+The current authoritative validation is the final six-zone matrix.
 
 ---
 
-## 35. Lessons Learned
+# Final Status
 
-Several important lessons were demonstrated during this project.
+Firewall and segmentation validation is complete.
 
-### Interface Names Can Change
+The final environment demonstrated:
 
-Disabling a VirtualBox adapter can cause guest operating systems to renumber network interfaces.
+- correct inter-zone routing
+- functioning least-privilege policy
+- REDNET containment
+- protected CORPNET
+- protected SERVERNET
+- centralized SOC connectivity
+- functioning Active Directory paths
+- ADNET isolation
+- DMZ isolation
+- restricted administrative SSH
+- controlled Internet access
+- firewall telemetry
+- Suricata visibility
+- Suricata-to-Wazuh detection
+- Nginx-to-Wazuh monitoring
+- healthy Wazuh agents
+- healthy SIEM services
+- validated Domain Controller health
 
-Interface configuration should therefore be associated with predictable device information such as MAC addresses where appropriate.
-
-### Firewall Rule Names Do Not Control Behavior
-
-A rule description can say "BLOCK" while the actual action is accidentally configured as "Pass."
-
-The rule action itself must always be verified.
-
-### Rule Ordering Matters
-
-Specific allow rules must appear before broader block rules.
-
-Likewise, private-network block rules must appear before general Internet access rules.
-
-### Routing Must Match Firewall Policy
-
-A correct firewall rule does not help if the operating system sends traffic through the wrong interface.
-
-Static routes were required during the staged migration to ensure traffic crossed OPNsense.
-
-### Test Before Removing Rollback Paths
-
-Outbound NAT was validated before direct NAT interfaces were disabled.
-
-This prevented unnecessary outages during migration.
-
-### Default Rules Should Not Be Trusted Indefinitely
-
-The original broad LAN allow policy was retained during migration, then disabled after explicit policies were proven to work.
-
----
-
-## 36. Security Outcome
-
-The project successfully transformed the original flat homelab into a segmented security environment.
-
-The firewall now provides:
-
-- Centralized routing
-- Stateful firewalling
-- Network segmentation
-- Outbound NAT
-- Controlled administrative access
-- Controlled offensive-security access
-- Inter-zone isolation
-- DNS services
-- Security logging
-- A foundation for IDS/IPS
-- A foundation for SIEM monitoring
-
-The environment is now suitable for more advanced offensive and defensive cybersecurity exercises.
-
----
-
-## 37. Current Status
-
-**OPNsense Firewall:** 🟢 Operational
-
-**CORPNET:** 🟢 Operational
-
-**REDNET:** 🟢 Operational
-
-**SERVERNET:** 🟢 Operational
-
-**Kali Direct NAT Bypass:** 🔴 Disabled
-
-**Windows Direct NAT Bypass:** 🔴 Disabled
-
-**Ubuntu Direct NAT Bypass:** 🔴 Disabled
-
-**Original LAB-NET:** 🔴 No longer used for the migrated systems
-
-**Custom Firewall Policy:** 🟢 Operational
-
-**Default LAN Allow Rules:** 🔴 Disabled
-
-**Outbound NAT:** 🟢 Verified
-
-**Internet Access:** 🟢 Verified
-
-**DNS:** 🟢 Verified
-
-**Controlled Attack Path:** 🟢 Verified
-
-**Segmentation:** 🟢 Verified
-
----
-
-## 38. Next Development Phase
-
-The next stages of the professional cybersecurity homelab will include:
-
-- Update the main architecture documentation
-- Update the repository README
-- Create the final network diagram
-- Centralized log collection
-- Wazuh SIEM deployment
-- Windows event forwarding
-- Linux log forwarding
-- OPNsense firewall log forwarding
-- Suricata IDS deployment
-- IDS alert analysis
-- IPS experimentation
-- Vulnerable application targets
-- Additional server workloads
-- Active Directory
-- SOC network
-- Detection engineering
-- Incident-response exercises
-- Attack simulation and telemetry correlation
-- Threat hunting
-- Security automation
-
-The objective is to create an environment where offensive activity can be generated, observed, detected, investigated, and documented.
-
----
-
-## Security Disclaimer
-
-This cybersecurity homelab is used exclusively for authorized cybersecurity education, ethical hacking, defensive-security training, and incident-response exercises.
-
-All scanning, enumeration, testing, exploitation, and attack simulation are performed only against systems that I own or have explicit authorization to test.
-
-No unauthorized external systems, networks, services, accounts, or organizations are targeted.
+The firewall is now considered a stable control plane for future SOC and Purple Team scenarios.
