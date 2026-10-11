@@ -1,447 +1,364 @@
-# Homelab IP Addressing and Network Configuration
+# Network Addressing Plan
 
-## 1. Overview
+## Overview
 
-This document describes the IP addressing scheme used throughout my cybersecurity homelab.
+The Cybersecurity Home Lab uses a segmented six-zone network architecture designed to simulate a small enterprise environment.
 
-The laboratory uses two separate network segments:
+OPNsense (`LAB-FW-01`) operates as the central firewall and Layer 3 routing point between all security zones. Inter-zone communication is controlled through explicit firewall rules following least-privilege principles.
 
-- NAT network for Internet connectivity
-- LAB-NET for isolated communication between cybersecurity laboratory systems
-
-The separation allows the laboratory systems to access required Internet resources while keeping security testing traffic isolated from the host's normal network environment.
+The environment separates offensive systems, corporate endpoints, servers, security monitoring infrastructure, Active Directory services, and externally exposed services into dedicated networks.
 
 ---
 
-## 2. Network Architecture
+## Network Zones
 
-The homelab consists of three primary virtual machines:
-
-| Virtual Machine | Role | NAT IP | LAB-NET IP |
+| Security Zone | Network | Gateway | Primary Purpose |
 |---|---|---|---|
-| Kali Linux | Offensive Security | `10.0.2.15/24` | `192.168.56.10/24` |
-| Windows 11 Enterprise | Windows Endpoint / Blue Team | `10.0.2.15/24` | `192.168.56.20/24` |
-| Ubuntu Server | Linux Server / Blue Team | `10.0.2.15/24` | `192.168.56.30/24` |
+| REDNET | `10.10.10.0/24` | `10.10.10.1` | Offensive security and attack simulation |
+| CORPNET | `10.10.20.0/24` | `10.10.20.1` | Corporate workstation environment |
+| SERVERNET | `10.10.30.0/24` | `10.10.30.1` | Internal Linux server environment |
+| SOCNET | `10.10.40.0/24` | `10.10.40.1` | Security monitoring and SIEM infrastructure |
+| ADNET | `10.10.50.0/24` | `10.10.50.1` | Active Directory and identity infrastructure |
+| DMZ | `10.10.60.0/24` | `10.10.60.1` | Externally exposed services |
 
-The identical NAT addresses are expected because each VirtualBox VM has its own isolated NAT network.
-
----
-
-## 3. NAT Network
-
-The NAT interface provides Internet connectivity to the virtual machines.
-
-**Network:** `10.0.2.0/24`
-
-**Default Gateway:** `10.0.2.2`
-
-**DNS:** `10.0.2.3`
-
-The NAT interface is primarily used for:
-
-- Operating system updates
-- Package installation
-- Downloading legitimate security tools
-- Accessing cybersecurity learning resources
-- Internet connectivity when required
-
-The NAT network is not used as the primary communication network for laboratory security testing.
+All gateways are provided by dedicated OPNsense interfaces on `LAB-FW-01`.
 
 ---
 
-## 4. LAB-NET
+## Host Addressing
 
-LAB-NET is the isolated network used for communication between the cybersecurity laboratory systems.
-
-**Network:** `192.168.56.0/24`
-
-**Subnet Mask:** `255.255.255.0`
-
-**Default Gateway:** None
-
-The LAB-NET network is used for:
-
-- Security testing
-- Network scanning
-- Service enumeration
-- Blue Team monitoring
-- Incident response exercises
-- Linux and Windows security testing
-- Communication between laboratory systems
-
-The LAB-NET interface does not require an Internet gateway.
+| Hostname | IP Address | Zone | Operating System / Platform | Primary Role |
+|---|---|---|---|---|
+| `LAB-FW-01` | Multiple `.1` interfaces | All Zones | OPNsense | Firewall, routing, segmentation and IDS |
+| `LAB-KALI-01` | `10.10.10.10` | REDNET | Kali Linux | Offensive security workstation |
+| `LAB-WIN-01` | `10.10.20.20` | CORPNET | Windows 11 Enterprise | Domain workstation / monitored endpoint |
+| `LAB-UBUNTU-01` | `10.10.30.30` | SERVERNET | Ubuntu Server | Internal Linux server |
+| `LAB-SIEM-01` | `10.10.40.10` | SOCNET | Ubuntu Server | Wazuh SIEM infrastructure |
+| `LAB-DC-01` | `10.10.50.10` | ADNET | Windows Server 2025 | Active Directory Domain Controller and DNS |
+| `LAB-DMZ-01` | `10.10.60.10` | DMZ | Ubuntu Server | Nginx DMZ web server |
 
 ---
 
-## 5. Kali Linux Addressing
+## REDNET — Offensive Security Zone
 
-Kali Linux is the primary offensive security workstation.
+**Network:** `10.10.10.0/24`  
+**Gateway:** `10.10.10.1`
 
-### NAT Interface
+### Host
 
-**Interface:** `eth0`
+- `LAB-KALI-01` — `10.10.10.10`
 
-**IP Address:** `10.0.2.15/24`
+### Purpose
 
-**Gateway:** `10.0.2.2`
+REDNET represents an untrusted or adversarial network used for controlled attack simulation.
 
-### LAB-NET Interface
+Kali Linux is deliberately isolated from sensitive internal systems. Access from REDNET to protected networks is denied unless an explicit firewall rule exists for a controlled security test.
 
-**Interface:** `eth1`
+### Validated Behaviour
 
-**IP Address:** `192.168.56.10/24`
+- REDNET → DMZ HTTP/80: **Allowed**
+- REDNET → DMZ SSH/22: **Blocked**
+- REDNET → CORPNET SMB/445: **Blocked**
+- REDNET → ADNET LDAP/389: **Blocked**
 
-**Gateway:** None
-
-Kali uses LAB-NET to communicate with the Windows and Ubuntu systems during authorized security testing.
-
----
-
-## 6. Windows 11 Addressing
-
-Windows 11 Enterprise is the primary Windows endpoint in the laboratory.
-
-### NAT Adapter
-
-**Adapter:** `NAT`
-
-**IP Address:** `10.0.2.15/24`
-
-**Gateway:** `10.0.2.2`
-
-**DNS:** `10.0.2.3`
-
-### LAB-NET Adapter
-
-**Adapter:** `LAB-NET`
-
-**IP Address:** `192.168.56.20/24`
-
-**Gateway:** None
-
-**DNS:** None
-
-Windows uses LAB-NET for isolated communication with Kali Linux and Ubuntu Server.
+HTTP traffic between REDNET and the DMZ is inspected by Suricata on OPNsense.
 
 ---
 
-## 7. Ubuntu Server Addressing
+## CORPNET — Corporate Network
 
-Ubuntu Server is the Linux server within the laboratory.
+**Network:** `10.10.20.0/24`  
+**Gateway:** `10.10.20.1`
 
-### NAT Interface
+### Host
 
-**Interface:** `enp0s3`
+- `LAB-WIN-01` — `10.10.20.20`
 
-**IP Address:** `10.0.2.15/24`
+### Purpose
 
-**Gateway:** `10.0.2.2`
+CORPNET represents the enterprise user workstation environment.
 
-### LAB-NET Interface
+`LAB-WIN-01` is joined to the `cyberlab.internal` Active Directory domain and receives security configuration through Group Policy.
 
-**Interface:** `enp0s8`
+The workstation also functions as the approved administrative workstation for restricted SSH management of the DMZ server.
 
-**IP Address:** `192.168.56.30/24`
+### Validated Services
 
-**Gateway:** None
+CORPNET → ADNET:
 
-The LAB-NET address was initially configured manually and was later converted to a persistent Netplan configuration.
+- DNS TCP/53: **Allowed**
+- Kerberos TCP/88: **Allowed**
+- LDAP TCP/389: **Allowed**
 
-The configuration was verified after reboot.
+CORPNET → SOCNET:
 
----
+- Wazuh TCP/1514: **Allowed**
 
-## 8. Complete Addressing Table
+CORPNET → DMZ:
 
-| System | Interface | Network | IPv4 Address | Gateway | Purpose |
-|---|---|---|---|---|---|
-| Kali Linux | `eth0` | NAT | `10.0.2.15/24` | `10.0.2.2` | Internet |
-| Kali Linux | `eth1` | LAB-NET | `192.168.56.10/24` | None | Lab traffic |
-| Windows 11 | `NAT` | NAT | `10.0.2.15/24` | `10.0.2.2` | Internet |
-| Windows 11 | `LAB-NET` | LAB-NET | `192.168.56.20/24` | None | Lab traffic |
-| Ubuntu Server | `enp0s3` | NAT | `10.0.2.15/24` | `10.0.2.2` | Internet |
-| Ubuntu Server | `enp0s8` | LAB-NET | `192.168.56.30/24` | None | Lab traffic |
+- SSH TCP/22 from `LAB-WIN-01` to `LAB-DMZ-01`: **Allowed**
+
+DMZ SSH administration is restricted through an OPNsense host alias representing the approved administrative workstation.
 
 ---
 
-## 9. Routing Design
+## SERVERNET — Internal Server Zone
 
-The laboratory uses separate routes for Internet traffic and isolated laboratory traffic.
+**Network:** `10.10.30.0/24`  
+**Gateway:** `10.10.30.1`
 
-### NAT Default Route
+### Host
 
-Internet-bound traffic uses:
+- `LAB-UBUNTU-01` — `10.10.30.30`
 
-`10.0.2.2`
+### Purpose
 
-as the default gateway.
+SERVERNET represents protected internal server infrastructure.
 
-### LAB-NET Route
+The zone is isolated from unnecessary workstation and DMZ access while maintaining required communication with the SOC monitoring infrastructure.
 
-Traffic destined for:
+### Validated Behaviour
 
-`192.168.56.0/24`
+- SERVERNET → SOCNET Wazuh TCP/1514: **Allowed**
+- SERVERNET → CORPNET SMB/445: **Blocked**
+- SERVERNET → DMZ SSH/22: **Blocked**
 
-is sent through the LAB-NET interface.
-
-This allows the systems to communicate directly without sending laboratory traffic through the NAT gateway.
-
----
-
-## 10. Connectivity Matrix
-
-The laboratory systems were tested for connectivity across LAB-NET.
-
-| Source | Destination | Address | Result |
-|---|---|---|---|
-| Kali | Windows | `192.168.56.20` | 🟢 Successful |
-| Kali | Ubuntu | `192.168.56.30` | 🟢 Successful |
-| Windows | Kali | `192.168.56.10` | 🟢 Successful |
-| Windows | Ubuntu | `192.168.56.30` | 🟢 Successful |
-| Ubuntu | Kali | `192.168.56.10` | 🟢 Successful |
-| Ubuntu | Windows | `192.168.56.20` | 🟢 Successful |
-
-The successful connectivity tests confirmed that the LAB-NET network is functioning correctly.
+`LAB-UBUNTU-01` is monitored by the Wazuh SIEM.
 
 ---
 
-## 11. Ubuntu Persistence Verification
+## SOCNET — Security Operations Zone
 
-Ubuntu's LAB-NET configuration was tested to ensure that the static address remained available after reboot.
+**Network:** `10.10.40.0/24`  
+**Gateway:** `10.10.40.1`
 
-The expected address:
+### Host
 
-`192.168.56.30/24`
+- `LAB-SIEM-01` — `10.10.40.10`
 
-was still present after the system restarted.
+### Purpose
 
-This confirmed that the Netplan configuration was persistent.
+SOCNET contains the centralized security monitoring infrastructure.
 
----
+`LAB-SIEM-01` hosts:
 
-## 12. Network Troubleshooting
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+- Centralized Suricata event collection
 
-The laboratory required troubleshooting during initial network configuration.
+Wazuh agents from monitored systems communicate with the SIEM over approved firewall paths.
 
-Windows initially received an APIPA address in the:
+### Monitored Endpoints
 
-`169.254.0.0/16`
-
-range instead of the required LAB-NET address.
-
-The Windows LAB-NET adapter was subsequently configured with:
-
-`192.168.56.20/24`
-
-Kali-to-Windows communication initially failed and required investigation of:
-
-- IP addressing
-- Network adapter configuration
-- VirtualBox networking
-- Windows network profile
-- Windows Firewall
-- ICMP traffic
-- Routing
-
-After troubleshooting, Kali and Windows successfully communicated across LAB-NET.
+| Agent | IP Address | Status During Final Validation |
+|---|---|---|
+| `LAB-WIN-01` | `10.10.20.20` | Active |
+| `LAB-UBUNTU-01` | `10.10.30.30` | Active |
+| `LAB-DC-01` | `10.10.50.10` | Active |
+| `LAB-DMZ-01` | `10.10.60.10` | Active |
 
 ---
 
-## 13. Network Isolation
+## ADNET — Identity and Directory Services Zone
 
-LAB-NET provides an isolated communication environment for cybersecurity exercises.
+**Network:** `10.10.50.0/24`  
+**Gateway:** `10.10.50.1`
 
-The network is intended to keep offensive and defensive testing traffic within the controlled laboratory environment.
+### Host
 
-Examples of activities that can be performed on LAB-NET include:
+- `LAB-DC-01` — `10.10.50.10`
 
-- Port scanning
-- Network discovery
-- Service enumeration
-- Vulnerability assessment
-- Authentication testing
-- Packet analysis
-- Detection engineering
-- Incident response exercises
+### Purpose
 
-All activities are restricted to authorized laboratory systems.
+ADNET isolates critical identity infrastructure from general workstation, server, offensive and DMZ networks.
 
----
+`LAB-DC-01` provides:
 
-## 14. Why Two Network Interfaces Are Used
+- Active Directory Domain Services
+- DNS
+- Kerberos authentication
+- LDAP directory services
+- Group Policy
+- Centralized identity management
 
-Using two network interfaces provides a practical separation between:
+### Domain
 
-**Internet connectivity**
+`cyberlab.internal`
 
-and
+### Validated Behaviour
 
-**Cybersecurity laboratory traffic**
+- CORPNET → AD DNS: **Allowed**
+- CORPNET → AD Kerberos: **Allowed**
+- CORPNET → AD LDAP: **Allowed**
+- ADNET → SOCNET Wazuh TCP/1514: **Allowed**
+- ADNET → DMZ SSH/22: **Blocked**
+- REDNET → ADNET LDAP/389: **Blocked**
 
-The NAT interface allows the virtual machines to reach the Internet when required.
+Final targeted `dcdiag` validation completed without errors for:
 
-The LAB-NET interface allows the virtual machines to communicate with each other without using the Internet-facing route.
-
-This architecture provides a useful foundation for offensive and defensive cybersecurity training.
-
----
-
-## 15. Security Benefits
-
-The two-network architecture provides several security benefits:
-
-- Separates laboratory traffic from normal Internet traffic
-- Reduces accidental interaction with external systems
-- Provides a predictable private IP addressing scheme
-- Makes network monitoring easier
-- Supports controlled offensive security exercises
-- Supports Blue Team monitoring
-- Simplifies troubleshooting
-- Provides a realistic multi-host environment
+- Advertising
+- SYSVOL
+- NetLogons
+- Services
 
 ---
 
-## 16. Network Verification Commands
+## DMZ — Demilitarized Zone
 
-The following commands are useful for verifying the network configuration.
+**Network:** `10.10.60.0/24`  
+**Gateway:** `10.10.60.1`
 
-### Kali Linux
+### Host
 
-`ip addr`
+- `LAB-DMZ-01` — `10.10.60.10`
 
-`ip route`
+### Purpose
 
-`ping -c 4 192.168.56.20`
+The DMZ represents a network segment containing services that may need to interact with less-trusted networks while remaining isolated from protected enterprise infrastructure.
 
-`ping -c 4 192.168.56.30`
+`LAB-DMZ-01` currently hosts an Nginx web service.
 
-### Ubuntu Server
+### Inbound Access
 
-`ip addr`
+REDNET:
 
-`ip route`
+- HTTP TCP/80: **Allowed**
+- SSH TCP/22: **Blocked**
 
-`ping -c 4 192.168.56.10`
+CORPNET:
 
-`ping -c 4 192.168.56.20`
+- SSH TCP/22 from `LAB-WIN-01` only: **Allowed**
 
-### Windows PowerShell
+ADNET:
 
-`Get-NetAdapter`
+- SSH TCP/22: **Blocked**
 
-`Get-NetIPConfiguration`
+### Outbound Access
 
-`Get-NetIPAddress`
+DMZ → SOCNET:
 
-`Get-NetRoute`
+- Wazuh TCP/1514: **Allowed**
+- Wazuh enrollment TCP/1515: **Allowed where required**
 
-`ping 192.168.56.10`
+DMZ → internal protected networks:
 
-`ping 192.168.56.30`
+- Unauthorized private-network access: **Blocked**
 
-These commands are used to verify interface state, addressing, routing, and connectivity.
+DMZ → Internet:
 
----
-
-## 17. Network Troubleshooting Methodology
-
-When a connectivity problem occurs, the following troubleshooting sequence will be used:
-
-1. Verify that the VM is running.
-2. Verify the VirtualBox adapter configuration.
-3. Check the network interface state.
-4. Check the assigned IPv4 address.
-5. Check the subnet mask.
-6. Check the routing table.
-7. Check the destination host.
-8. Test connectivity with ICMP.
-9. Check firewall configuration.
-10. Check network profiles.
-11. Review relevant logs.
-12. Retest connectivity.
-13. Document the problem and resolution.
-
-This creates a repeatable troubleshooting methodology rather than relying on trial and error.
+- HTTP/HTTPS outbound access: **Allowed**
+- Other unauthorized outbound traffic: **Denied**
 
 ---
 
-## 18. Planned Network Security Labs
+## DMZ Administrative Access
 
-The addressing architecture will support future cybersecurity exercises including:
+Remote administration of `LAB-DMZ-01` is intentionally restricted.
 
-### Network Discovery
+Approved path:
 
-- Host discovery
-- ARP analysis
-- Network mapping
+`LAB-WIN-01 (10.10.20.20) → LAB-DMZ-01 (10.10.60.10) → TCP/22`
 
-### Network Scanning
+SSH security controls include:
 
-- Port scanning
-- Service discovery
-- Version detection
+- Public-key authentication enabled
+- Password authentication disabled
+- Keyboard-interactive authentication disabled
+- Direct root SSH login disabled
+- OPNsense restricts the network path to the approved administrative workstation
 
-### Packet Analysis
-
-- Wireshark
-- TCP/IP analysis
-- DNS analysis
-- HTTP traffic analysis
-
-### Defensive Security
-
-- Firewall configuration
-- Network monitoring
-- Suspicious traffic detection
-- Intrusion detection
-
-### Offensive Security
-
-- Enumeration
-- Vulnerability assessment
-- Controlled exploitation
-- Privilege escalation
-
-All offensive activities will remain inside the isolated laboratory.
+The Domain Controller is deliberately not used as a general-purpose management or jump host.
 
 ---
 
-## 19. Current Network Status
+## Security Monitoring Paths
 
-**Status:** 🟢 Operational
+### Endpoint Telemetry
 
-The current laboratory addressing scheme is:
+`LAB-WIN-01 → LAB-SIEM-01`
 
-**NAT**
+`LAB-UBUNTU-01 → LAB-SIEM-01`
 
-`10.0.2.0/24`
+`LAB-DC-01 → LAB-SIEM-01`
 
-↓  
+`LAB-DMZ-01 → LAB-SIEM-01`
 
-**LAB-NET**
+### Network IDS Telemetry
 
-`192.168.56.0/24`
+Suricata operates on OPNsense and provides IDS visibility into monitored REDNET traffic.
 
-### Current LAB-NET Hosts
+Validated detection path:
 
-`192.168.56.10` → Kali Linux
+`LAB-KALI-01 → OPNsense / Suricata → LAB-DMZ-01`
 
-`192.168.56.20` → Windows 11
+A controlled HTTP response containing:
 
-`192.168.56.30` → Ubuntu Server
+`uid=0(root) gid=0(root) groups=0(root)`
 
-All three systems are currently operational and can communicate across LAB-NET.
+triggered Suricata signature:
 
-Ubuntu's LAB-NET configuration has also been verified to persist after reboot.
+- SID: `2100498`
+- Signature: `GPL ATTACK_RESPONSE id check returned root`
+
+The resulting Suricata event was forwarded to Wazuh and generated:
+
+- Wazuh Rule ID: `86601`
 
 ---
 
-## 20. Security Disclaimer
+## DMZ Web Monitoring
 
-This network architecture is designed exclusively for authorized cybersecurity education, testing, and experimentation.
+Nginx access and error logs from `LAB-DMZ-01` are collected by its Wazuh agent.
 
-All scanning, enumeration, exploitation, monitoring, and other security activities are performed only against systems that I own or have explicit authorization to test.
+Monitored files:
 
-No unauthorized external systems or networks are targeted.
+- `/var/log/nginx/access.log`
+- `/var/log/nginx/error.log`
 
-The homelab is maintained as a controlled environment for developing practical cybersecurity skills.
+A controlled REDNET request to the DMZ produced a Wazuh web-server alert:
+
+- Wazuh Rule ID: `31101`
+- Description: `Web server 400 error code.`
+- Source: `10.10.10.10`
+- Agent: `LAB-DMZ-01`
+- Decoder: `web-accesslog`
+
+This validates application-layer visibility in addition to network-layer Suricata monitoring.
+
+---
+
+## Segmentation Philosophy
+
+The architecture follows several core security principles:
+
+1. **Network segmentation** — systems with different trust levels are placed into separate zones.
+2. **Least privilege** — inter-zone traffic is permitted only when required.
+3. **Default-deny behaviour** — unauthorized communication between protected zones is blocked.
+4. **Centralized monitoring** — security telemetry is forwarded to SOCNET.
+5. **Attack visibility** — REDNET provides a controlled adversarial environment for testing defensive controls.
+6. **Identity isolation** — Active Directory services are separated from general-purpose systems.
+7. **DMZ isolation** — externally exposed services cannot freely communicate with protected internal networks.
+8. **Restricted administration** — management access is limited to approved systems and protocols.
+
+---
+
+## Final Validation Status
+
+The six-zone network was validated after completion of the firewall, Active Directory, SIEM, IDS, endpoint-monitoring and DMZ phases.
+
+Validated zones:
+
+- REDNET — `10.10.10.0/24`
+- CORPNET — `10.10.20.0/24`
+- SERVERNET — `10.10.30.0/24`
+- SOCNET — `10.10.40.0/24`
+- ADNET — `10.10.50.0/24`
+- DMZ — `10.10.60.0/24`
+
+All lab virtual machines were subsequently placed at the common known-good VirtualBox snapshot:
+
+`Final-Six-Zone-Validated-Baseline`
+
+This snapshot represents the validated infrastructure baseline prior to beginning operational SOC and Purple Team simulations.
