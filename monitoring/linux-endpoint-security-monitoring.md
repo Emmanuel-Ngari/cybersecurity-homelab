@@ -1,1534 +1,1027 @@
-# Linux Endpoint Security Monitoring — LAB-UBUNTU-01
+# Linux Endpoint Security Monitoring
 
-## 1. Overview
+## Overview
 
-This document records the implementation, validation, tuning, and final operational state of Linux security monitoring in the Purple Team CyberLab.
+This document records the complete evolution of Linux endpoint security monitoring in the Cybersecurity Home Lab, from the earliest Ubuntu SSH/fail2ban phase through the final monitored `LAB-UBUNTU-01` deployment in SERVERNET.
 
-The monitored Linux endpoint is:
+Linux monitoring did not begin with Wazuh.
 
-- Hostname: LAB-UBUNTU-01
-- Operating System: Ubuntu 26.04.1 LTS
-- Network Zone: SERVERNET
-- IP Address: 10.10.30.30/24
-- Default Gateway: 10.10.30.1
-- Wazuh Agent ID: 002
-- Wazuh Manager: LAB-SIEM-01
-- SIEM IP Address: 10.10.40.10
-- Wazuh Agent Version: 4.14.7-1
+The earliest Ubuntu environment was monitored mainly through:
 
-The objective of this phase was to create production-style Linux endpoint visibility covering:
+- SSH logs
+- local system logs
+- fail2ban
+- manual log inspection
+- attacker retesting from Kali
 
-- Authentication activity
-- SSH activity
-- Privileged command execution
-- Linux account creation
-- Linux account modification
-- Linux account deletion
-- Audit subsystem monitoring
-- File Integrity Monitoring
-- Critical system configuration changes
-- Package installation
-- Service start/stop activity
-- Wazuh detection engineering
-- MITRE ATT&CK mapping
-- Dashboard validation
+As the project matured, Linux monitoring evolved into a centralized SOC capability using:
 
-The environment was intentionally built using native Linux telemetry and Wazuh capabilities rather than installing unnecessary additional monitoring platforms.
+- Wazuh Agent
+- Linux authentication logs
+- system logs
+- auditd
+- custom Wazuh rules
+- firewall-aware troubleshooting
+- endpoint validation
+- centralized detection engineering
 
----
+The final monitored Linux endpoint is:
 
-# 2. Architecture
+`LAB-UBUNTU-01`
 
-Security telemetry follows this path:
+Final address:
 
-LAB-UBUNTU-01
-    |
-    | Wazuh Agent
-    |
-    | TCP/1514
-    v
-LAB-SIEM-01
-    |
-    +-- Wazuh Manager
-    +-- Wazuh Indexer
-    +-- Wazuh Dashboard
-    +-- Filebeat
+`10.10.30.30`
 
-Relevant network zones:
+Final zone:
 
-SERVERNET
-    10.10.30.0/24
+`SERVERNET`
 
-SOCNET
-    10.10.40.0/24
+Monitoring destination:
 
-LAB-UBUNTU-01
-    10.10.30.30
+`LAB-SIEM-01 — 10.10.40.10`
 
-LAB-SIEM-01
-    10.10.40.10
+Final Wazuh agent:
 
-Firewall segmentation is handled by LAB-FW-01 running OPNsense.
+`ID 002 — LAB-UBUNTU-01`
 
-ICMP connectivity between SERVERNET and SOCNET was not used as a requirement for determining Wazuh health.
+Status:
 
-The Wazuh agent was confirmed connected and active despite ICMP being restricted.
+`Active`
 
 ---
 
-# 3. Initial Linux Endpoint Baseline
+# Phase 1 — Original Linux Monitoring
 
-The endpoint was verified before implementing additional security monitoring.
+The original Ubuntu Server operated on:
 
-Hostname:
+`192.168.56.30`
 
-    lab-ubuntu-01
+within the early flat lab.
 
-Operating system:
+The other main systems were:
 
-    Ubuntu 26.04.1 LTS
+- Kali — `192.168.56.10`
+- Windows — `192.168.56.20`
 
-Primary SERVERNET interface:
+At this stage, security monitoring was local and manual.
 
-    enp0s8
-    10.10.30.30/24
+The server was primarily used to learn:
 
-Default route:
+- SSH
+- authentication
+- Linux logs
+- fail2ban
+- Nmap
+- Hydra
+- attacker/defender interaction
 
-    default via 10.10.30.1
+There was no centralized SIEM.
 
-Storage:
+---
 
-    /dev/mapper/ubuntu--vg-ubuntu--lv
-    Size: 19G
-    Used: 5.3G
-    Available: 13G
-    Utilization: 30%
+# Early SSH Visibility
 
-System health:
+SSH became one of the first monitored Linux services.
 
-    No failed systemd services
+Kali interacted with the Ubuntu SSH service from:
 
-SSH:
+`192.168.56.10`
 
-    Active
-    Listening on TCP/22
+The Ubuntu system recorded authentication activity locally.
 
-Authentication log:
+This allowed the project to observe:
 
-    /var/log/auth.log
+- successful SSH connections
+- failed login attempts
+- repeated authentication failures
+- source addresses
+- service behaviour
 
-Wazuh agent:
+This was the earliest practical Linux security telemetry in the lab.
 
-    Active
+---
 
-Agent connection on LAB-SIEM-01:
+# Nmap and Service Validation
+
+Kali used Nmap to examine Ubuntu.
+
+An early result showed:
+
+`22/tcp open`
+
+This confirmed that:
+
+- the server was reachable
+- SSH was exposed
+- the service was listening
+
+After defensive controls were applied, the same service could appear differently from the attacker side.
+
+This introduced the concept of validating monitoring and controls from both perspectives.
+
+---
+
+# Hydra Testing
+
+Hydra was used against the SSH service in a controlled lab scenario.
+
+The objective was to generate repeated authentication failures.
+
+The Ubuntu system was then inspected to determine:
+
+- whether the failures were logged
+- whether fail2ban detected them
+- whether the attacker was blocked
+- whether the service behaviour changed
+
+This was an early example of generating telemetry intentionally.
+
+---
+
+# fail2ban Monitoring
+
+fail2ban became the first major automated Linux defensive control used in the project.
+
+It monitored authentication failures and reacted to repeated suspicious activity.
+
+The workflow became:
+
+    Kali
+      |
+      v
+    SSH Authentication Failures
+      |
+      v
+    Ubuntu Authentication Logs
+      |
+      v
+    fail2ban
+      |
+      v
+    Attacker Source Blocked
+      |
+      v
+    Kali Retest
+
+This represented the first Linux attack-detection-response cycle in the lab.
+
+---
+
+# Attacker-Side Validation
+
+After fail2ban acted, Kali retested the target.
+
+An earlier:
+
+`22/tcp open`
+
+state could later appear as:
+
+`filtered`
+
+This provided visible proof that the defensive control changed attacker access.
+
+The lesson was important:
+
+**A security control should be validated from both the defender and attacker perspectives.**
+
+---
+
+# Limits of Local Monitoring
+
+Although fail2ban and local logs were useful, the early approach had limitations.
+
+Investigation required logging directly into Ubuntu and reviewing local information.
+
+There was no central place to correlate Linux activity with:
+
+- Windows
+- firewall
+- IDS
+- identity systems
+
+This became increasingly inadequate as the lab expanded.
+
+---
+
+# Transition to SERVERNET
+
+When OPNsense was introduced, Ubuntu was rebuilt and standardized as:
+
+`LAB-UBUNTU-01`
+
+Final network:
+
+`SERVERNET`
+
+Address:
+
+`10.10.30.30`
+
+Gateway:
+
+`10.10.30.1`
+
+The server was no longer a simple flat-network target.
+
+It became a protected internal enterprise-style Linux asset.
+
+---
+
+# SERVERNET Monitoring Impact
+
+Moving Ubuntu into SERVERNET changed how monitoring had to be approached.
+
+Security now depended on both:
+
+- endpoint visibility
+- network policy
+
+A missing event or disconnected agent could be caused by:
+
+- Linux service state
+- Wazuh configuration
+- OPNsense firewall policy
+- routing
+- network availability
+
+Monitoring therefore became more systematic.
+
+---
+
+# Wazuh Introduction
+
+Wazuh was introduced as the central monitoring platform.
+
+The SIEM was placed in:
+
+`SOCNET`
+
+Address:
+
+`10.10.40.10`
+
+The Ubuntu server was enrolled as:
+
+    ID: 002
+    Name: LAB-UBUNTU-01
+
+The Wazuh agent established centralized Linux monitoring.
+
+---
+
+# Linux-to-SIEM Communication
+
+Primary Wazuh communication uses:
+
+`TCP/1514`
+
+Enrollment may use:
+
+`TCP/1515`
+
+The required firewall path was configured between:
+
+`SERVERNET`
+
+and:
+
+`SOCNET`
+
+This allowed Ubuntu telemetry to reach the SIEM without granting unrestricted access to SOCNET.
+
+---
+
+# Service-Level Connectivity Testing
+
+The Linux monitoring phase produced an important troubleshooting lesson.
+
+At one stage, ICMP testing between Ubuntu and the SIEM did not succeed.
+
+However:
+
+`TCP/1514`
+
+was reachable.
+
+This demonstrated that:
+
+**Ping failure does not prove the required monitoring service is unavailable.**
+
+The correct validation was to test the actual service port.
+
+---
+
+# Wazuh Port Validation
+
+A typical test used:
+
+    nc -zv -w 3 10.10.40.10 1514
+
+Successful connection confirmed that:
+
+- routing worked
+- OPNsense allowed the path
+- the SIEM service was reachable
+
+This became the preferred troubleshooting approach.
+
+---
+
+# Linux Wazuh Agent Monitoring
+
+Once the agent was connected, the Ubuntu server began providing centralized telemetry.
+
+Important sources included:
+
+- system logs
+- authentication logs
+- administrative activity
+- Linux security events
+
+The monitoring architecture became:
+
+    LAB-UBUNTU-01
+          |
+          v
+      Linux Logs
+          |
+          v
+      Wazuh Agent
+          |
+          v
+    LAB-SIEM-01
+
+---
+
+# auditd Introduction
+
+The Linux monitoring capability was later expanded using:
+
+`auditd`
+
+auditd provides deeper operating-system visibility than basic log collection alone.
+
+It can record security-relevant activity involving:
+
+- account management
+- privileged commands
+- file access
+- system administration
+- security configuration
+
+This made it valuable for Linux detection engineering.
+
+---
+
+# auditd to Wazuh
+
+auditd telemetry was ingested into Wazuh.
+
+The monitoring pipeline became:
+
+    Linux Activity
+         |
+         v
+       auditd
+         |
+         v
+    Audit Records
+         |
+         v
+    Wazuh Agent
+         |
+         v
+    LAB-SIEM-01
+
+This provided a better foundation for custom detections.
+
+---
+
+# Account Management Monitoring
+
+One of the first Linux detection-engineering objectives was to monitor local account changes.
+
+User creation and deletion are security-relevant because they may indicate:
+
+- legitimate administration
+- attacker persistence
+- unauthorized access
+- account cleanup
+- privilege-related activity
+
+Controlled tests were therefore created.
+
+---
+
+# User Creation Detection
+
+A native Linux user-add operation was generated on:
+
+`LAB-UBUNTU-01`
+
+Wazuh successfully detected the activity using:
+
+`Rule 100200`
+
+Purpose:
+
+Detect native Linux user creation.
+
+Status:
+
+**PASS**
+
+---
+
+# User Creation Detection Path
+
+The validated flow was:
+
+    Linux User Creation
+          |
+          v
+    Native Linux Event
+          |
+          v
+       auditd / Logs
+          |
+          v
+      Wazuh Agent
+          |
+          v
+     LAB-SIEM-01
+          |
+          v
+      Rule 100200
+
+This proved that Linux account creation could be detected centrally.
+
+---
+
+# User Deletion Detection
+
+A native user-deletion event was also generated.
+
+Wazuh rule:
+
+`Rule 100201`
+
+Purpose:
+
+Detect native Linux user deletion.
+
+Status:
+
+**PASS**
+
+---
+
+# User Deletion Detection Path
+
+The flow was:
+
+    Linux User Deletion
+          |
+          v
+    Native Linux Event
+          |
+          v
+       auditd / Logs
+          |
+          v
+      Wazuh Agent
+          |
+          v
+     LAB-SIEM-01
+          |
+          v
+      Rule 100201
+
+This completed a simple but important Linux account-management detection pair.
+
+---
+
+# Why Rules 100200 and 100201 Matter
+
+These detections were significant because they demonstrated that the lab had moved beyond:
+
+- installing Wazuh
+- collecting logs
+- viewing dashboards
+
+The environment was now actively creating and validating detection logic around Linux activity.
+
+---
+
+# Monitoring vs Protection
+
+Linux monitoring and Linux protection are separate concepts.
+
+Examples:
+
+## Protection
+
+fail2ban blocks repeated authentication failures.
+
+## Monitoring
+
+Wazuh records and detects security-relevant activity.
+
+The mature architecture uses both approaches where appropriate.
+
+A security event does not always need to be blocked automatically.
+
+Some events are better:
+
+- recorded
+- correlated
+- investigated
+
+---
+
+# fail2ban vs Wazuh Evolution
+
+The project therefore evolved from:
+
+    fail2ban
+      |
+      v
+    Local Automated Protection
+
+to:
+
+    auditd / Linux Logs
+         |
+         v
+       Wazuh
+         |
+         v
+    Centralized Detection
+
+The earlier fail2ban work remains an important historical stage rather than something replaced or forgotten.
+
+---
+
+# OPNsense Firewall Context
+
+The Linux server exists behind OPNsense.
+
+This means monitoring problems can involve both:
+
+- host state
+- network policy
+
+Final segmentation confirms the server can reach the SIEM while remaining isolated from unauthorized destinations.
+
+---
+
+# SERVERNET to SOCNET Validation
+
+Test:
+
+    nc -zv -w 3 10.10.40.10 1514
+
+Expected:
+
+`ALLOW`
+
+Result:
+
+Successful connection.
+
+Status:
+
+**PASS**
+
+This confirms the endpoint-monitoring path.
+
+---
+
+# SERVERNET to CORPNET Validation
+
+Test:
+
+    nc -zv -w 3 10.10.20.20 445
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Timed out.
+
+Status:
+
+**PASS**
+
+This shows that monitoring access to SOCNET did not create broad east-west trust.
+
+---
+
+# SERVERNET to DMZ Validation
+
+Test:
+
+    nc -zv -w 3 10.10.60.10 22
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Timed out.
+
+Status:
+
+**PASS**
+
+This confirms that the internal Linux server cannot freely administer the DMZ.
+
+---
+
+# Agent Connectivity Troubleshooting
+
+At one stage, the Wazuh manager appeared to show:
+
+`LAB-UBUNTU-01`
+
+as disconnected.
+
+This required careful investigation.
+
+The troubleshooting process examined:
+
+- network connectivity
+- agent logs
+- timestamps
+- manager status
+- current service state
+
+---
+
+# Historical Log Lesson
+
+Older Wazuh log entries contained connection errors.
+
+However, more recent logs showed successful communication.
+
+The manager later reported the agent as:
+
+`Active`
+
+The lesson was:
+
+**Do not diagnose current system health using old error messages without checking timestamps and present state.**
+
+---
+
+# Current State vs Historical Errors
+
+A professional monitoring investigation should ask:
+
+- When did the error occur?
+- Is the service currently active?
+- Is the network path currently reachable?
+- Does the manager currently see the agent?
+- Are recent logs healthy?
+
+This prevents unnecessary configuration changes.
+
+---
+
+# Reverse DNS Warning Lesson
+
+During some `nc` connectivity checks, reverse-DNS-related warning messages could appear.
+
+These warnings did not necessarily indicate connectivity failure.
+
+The important result was whether the target TCP port connected successfully.
+
+This reinforced another troubleshooting principle:
+
+**Separate cosmetic diagnostic warnings from actual service failure.**
+
+---
+
+# Detection Validation Philosophy
+
+Linux detections were not considered complete simply because a rule file existed.
+
+The workflow required:
+
+1. Generate real activity.
+2. Confirm the source event.
+3. Confirm Wazuh ingestion.
+4. Confirm rule matching.
+5. Confirm the resulting alert.
+6. Record the outcome.
+
+This became the standard detection-engineering model for the rest of the lab.
+
+---
+
+# Monitoring Architecture
+
+The final Linux monitoring architecture is:
+
+    Linux User / Process Activity
+              |
+              v
+        LAB-UBUNTU-01
+              |
+              +--> Authentication Logs
+              |
+              +--> System Logs
+              |
+              +--> auditd
+              |
+              v
+         Wazuh Agent
+              |
+              | TCP/1514
+              v
+         LAB-FW-01
+           OPNsense
+              |
+              v
+         LAB-SIEM-01
+              |
+              v
+        Wazuh Detection
+
+---
+
+# Linux Detection Use Cases
+
+The existing monitoring architecture can support future detections involving:
+
+- user creation
+- user deletion
+- repeated SSH failures
+- suspicious sudo activity
+- privilege escalation
+- persistence
+- service changes
+- file modifications
+- unusual administrative commands
+- attacker-created accounts
+- unauthorized configuration changes
+
+The infrastructure is already available to develop these detections as specific Purple Team scenarios are introduced.
+
+---
+
+# Linux Monitoring and Purple Team Operations
+
+A future Purple Team scenario can follow:
+
+    Kali / Simulated Attacker
+             |
+             v
+       Linux Activity
+             |
+             v
+        auditd / Logs
+             |
+             v
+        Wazuh Agent
+             |
+             v
+        LAB-SIEM-01
+             |
+             v
+         Detection
+             |
+             v
+       SOC Investigation
+             |
+             v
+      Detection Improvement
+
+This continues the same attacker/defender methodology that began with fail2ban in the earliest lab.
+
+---
+
+# Noise Management
+
+auditd and Linux logs can produce significant telemetry.
+
+The objective is not to create alerts for every administrative action.
+
+Detection logic should prioritize activity that is useful for:
+
+- SOC triage
+- threat hunting
+- investigation
+- security validation
+
+Rules should be tuned based on observed behaviour rather than created only to increase alert volume.
+
+---
+
+# Linux Endpoint vs Network Monitoring
+
+The final environment monitors Linux activity at multiple layers.
+
+## Endpoint Layer
+
+- authentication logs
+- auditd
+- Wazuh Agent
+
+## Network Layer
+
+- OPNsense
+- firewall logs
+- Suricata where relevant
+
+This provides stronger investigation capability than relying only on the endpoint.
+
+---
+
+# Example Correlation Scenario
+
+A future SSH attack could potentially generate:
+
+    SSH Connection Attempt
+            |
+            v
+      OPNsense Evidence
+            |
+            v
+      Linux SSH Logs
+            |
+            v
+         auditd
+            |
+            v
+      fail2ban Action
+            |
+            v
+          Wazuh
+            |
+            v
+      SOC Investigation
+
+This represents a mature version of the same exercise performed in the original flat lab.
+
+---
+
+# Wazuh Agent Final State
+
+Final Linux agent:
 
     ID: 002
     Name: LAB-UBUNTU-01
     Status: Active
 
-A VirtualBox snapshot was taken before implementing Linux security monitoring:
-
-    Pre-Linux-Security-Monitoring
+The agent remained active during final six-zone validation.
 
 ---
 
-# 4. Existing Wazuh Agent Configuration
+# Final Monitoring Validation
 
-The Linux agent was already connected to the SIEM using:
-
-Manager:
-
-    10.10.40.10
-
-Port:
-
-    1514
-
-Protocol:
-
-    TCP
-
-Agent profile:
-
-    ubuntu
-    ubuntu26
-    ubuntu26.04
-
-Existing telemetry collection included:
-
-- journald
-- /var/log/dpkg.log
-- Wazuh active response log
-- disk utilization command monitoring
-- network command monitoring
-- login history collection
-
-The existing File Integrity Monitoring configuration covered:
-
-- /etc
-- /usr/bin
-- /usr/sbin
-- /bin
-- /sbin
-- /boot
-
-The original FIM scan frequency was:
-
-    43200 seconds
-
-Equivalent to:
-
-    12 hours
+| Validation | Result |
+|---|---|
+| Early SSH logging | PASS |
+| Hydra-generated authentication failures | PASS |
+| fail2ban response | PASS |
+| Attacker-side retest | PASS |
+| Wazuh agent installed | PASS |
+| SERVERNET → SOCNET TCP/1514 | PASS |
+| Linux logs ingested | PASS |
+| auditd ingested | PASS |
+| User-add Rule 100200 | PASS |
+| User-delete Rule 100201 | PASS |
+| Agent final state Active | PASS |
+| SERVERNET → CORPNET SMB blocked | PASS |
+| SERVERNET → DMZ SSH blocked | PASS |
 
 ---
 
-# 5. Authentication and Sudo Monitoring
+# Troubleshooting Lessons
 
-Wazuh was already collecting Linux journald events.
+Linux monitoring produced several important lessons.
 
-This allowed authentication and sudo activity to be detected without separately ingesting /var/log/auth.log and creating duplicate telemetry.
+## Test the Actual Service
 
-A sudo test was performed using:
+Do not rely only on ping.
 
-    sudo -k
-    sudo whoami
+## Check Timestamps
 
-Wazuh successfully generated:
+Historical errors do not prove a current outage.
 
-Rule:
+## Separate Network and Agent Problems
 
-    5402
+Verify TCP/1514 before changing Wazuh configuration.
 
-Description:
+## Validate Raw Events First
 
-    Successful sudo to ROOT executed.
+Do not build a detection before confirming telemetry exists.
 
-MITRE ATT&CK:
+## Retest After Changes
 
-    T1548.003
-    Sudo and Sudo Caching
-
-The event contained:
-
-- Source user
-- Destination user
-- Terminal
-- Current directory
-- Executed command
-
-Example:
-
-    USER=root
-    COMMAND=/usr/bin/whoami
-
-This confirmed privileged command visibility through journald.
+A configuration is not complete until the behaviour is proven.
 
 ---
 
-# 6. SSH Monitoring
+# Historical vs Current State
 
-SSH monitoring was validated using existing Wazuh Linux rules.
+This document intentionally preserves the entire Linux monitoring journey.
 
-A connection attempt was generated from REDNET:
+Historical stages include:
 
-Source:
+- Ubuntu `192.168.56.30`
+- local SSH logging
+- Nmap validation
+- Hydra authentication testing
+- fail2ban
+- attacker-side retesting
+- no SIEM
 
-    10.10.10.10
+Later stages include:
 
-Destination:
+- SERVERNET migration
+- Wazuh Agent deployment
+- centralized monitoring
+- auditd
+- custom Linux detections
+- firewall-aware troubleshooting
+- final six-zone validation
 
-    10.10.30.30:22
+The authoritative current state is:
 
-A non-existent account was used:
-
-    fakeuser
-
-Wazuh detected the invalid login attempt.
-
-Rule:
-
-    5710
-
-Level:
-
-    5
-
-Description:
-
-    sshd: Attempt to login using a non-existent user
-
-MITRE ATT&CK:
-
-    T1110.001
-    Password Guessing
-
-    T1021.004
-    SSH
-
-The event correctly captured:
-
-    Source IP: 10.10.10.10
-    Username: fakeuser
-
-PAM authentication failure was also detected.
-
-Rule:
-
-    5503
-
-Level:
-
-    5
-
-Description:
-
-    PAM: User login failed.
-
-MITRE ATT&CK:
-
-    T1110.001
-
-Successful SSH authentication was also validated.
-
-Rule:
-
-    5715
-
-Description:
-
-    sshd: authentication success.
-
-Example source:
-
-    10.10.20.20
-
-Destination user:
-
-    ubuntu
-
-MITRE ATT&CK:
-
-    T1078
-    Valid Accounts
-
-    T1021
-    Remote Services
-
-PAM session creation was also visible through:
-
-    Rule 5501
-    PAM: Login session opened.
-
-PAM session termination was visible through:
-
-    Rule 5502
-    PAM: Login session closed.
-
-No custom SSH rule was created because the built-in Wazuh detections provided sufficient coverage.
+    Host: LAB-UBUNTU-01
+    IP: 10.10.30.30
+    Zone: SERVERNET
+    Wazuh Agent: Active
+    Agent ID: 002
+    auditd: Integrated
+    Rule 100200: Validated
+    Rule 100201: Validated
+    SIEM Destination: 10.10.40.10
 
 ---
 
-# 7. Auditd Installation
+# Evolution Summary
 
-Auditd was installed on LAB-UBUNTU-01:
+Linux endpoint monitoring evolved through:
 
-    sudo apt install auditd audispd-plugins
-
-Service validation:
-
-    systemctl is-active auditd
-
-Result:
-
-    active
-
-Audit subsystem status:
-
-    enabled 1
-    failure 1
-    rate_limit 0
-    backlog_limit 8192
-    lost 0
-
-Audit log:
-
-    /var/log/audit/audit.log
-
----
-
-# 8. Wazuh Auditd Integration
-
-The Wazuh agent configuration was backed up before modification:
-
-    /var/ossec/etc/ossec.conf.pre-auditd.bak
-
-Auditd ingestion was added using:
-
-    <ossec_config>
-      <localfile>
-        <log_format>audit</log_format>
-        <location>/var/log/audit/audit.log</location>
-      </localfile>
-    </ossec_config>
-
-The configuration was validated using:
-
-    sudo /var/ossec/bin/wazuh-logcollector -t
-
-The Wazuh agent was restarted and confirmed active.
-
-Wazuh logs confirmed:
-
-    Analyzing file: '/var/log/audit/audit.log'.
-
-A temporary Auditd test rule was created to validate the complete telemetry path.
-
-The test confirmed:
-
-Linux Kernel
-    ->
-Auditd
-    ->
-/var/log/audit/audit.log
-    ->
-Wazuh Agent
-    ->
-LAB-SIEM-01
-
-Wazuh rule 80705 was generated during Auditd rule changes:
-
-    Auditd: Configuration changed.
-
-The temporary test rule was removed after successful validation.
+    Local SSH Logs
+          |
+          v
+      Nmap Testing
+          |
+          v
+      Hydra Testing
+          |
+          v
+        fail2ban
+          |
+          v
+    Attacker Retesting
+          |
+          v
+    SERVERNET Migration
+          |
+          v
+      Wazuh Agent
+          |
+          v
+    Centralized Logging
+          |
+          v
+        auditd
+          |
+          v
+    Custom Linux Rules
+          |
+          v
+    Connectivity Troubleshooting
+          |
+          v
+    Final SOC-Ready Linux Monitoring
 
 ---
 
-# 9. Production Auditd Security Policy
+# Final Status
 
-The initial policy used legacy Auditd watch syntax.
+The Linux endpoint security-monitoring baseline is complete.
 
-Example:
+`LAB-UBUNTU-01` now provides:
 
-    -w /etc/passwd -p wa -k identity_changes
+- centralized Linux telemetry
+- authentication visibility
+- auditd data
+- validated account-change detections
+- controlled SIEM communication
+- firewall-enforced segmentation
+- a stable platform for Linux Purple Team exercises
 
-Auditd generated warnings that old-style watch rules were slower.
+The monitoring environment has evolved from local fail2ban validation into centralized SOC detection.
 
-The policy was therefore modernized using syscall/path-based rules.
-
-Final policy file:
-
-    /etc/audit/rules.d/50-cyberlab-security.rules
-
-Final contents:
-
-    ## Purple Team CyberLab - Linux Security Audit Policy
-    ## Modern syscall-based file and directory monitoring
-
-    # Identity and authentication databases
-    -a always,exit -F arch=b64 -F path=/etc/passwd -F perm=wa -k identity_changes
-    -a always,exit -F arch=b64 -F path=/etc/group -F perm=wa -k identity_changes
-    -a always,exit -F arch=b64 -F path=/etc/shadow -F perm=wa -k identity_changes
-    -a always,exit -F arch=b64 -F path=/etc/gshadow -F perm=wa -k identity_changes
-
-    # Privilege configuration
-    -a always,exit -F arch=b64 -F path=/etc/sudoers -F perm=wa -k privilege_changes
-    -a always,exit -F arch=b64 -F dir=/etc/sudoers.d/ -F perm=wa -k privilege_changes
-
-    # SSH configuration
-    -a always,exit -F arch=b64 -F path=/etc/ssh/sshd_config -F perm=wa -k ssh_config_changes
-    -a always,exit -F arch=b64 -F dir=/etc/ssh/sshd_config.d/ -F perm=wa -k ssh_config_changes
-
-    # Audit subsystem configuration
-    -a always,exit -F arch=b64 -F dir=/etc/audit/ -F perm=wa -k audit_config_changes
-
-Rules were loaded using:
-
-    sudo augenrules --check
-    sudo augenrules --load
-
-Kernel-loaded rules were confirmed using:
-
-    sudo auditctl -l
-
-Final Auditd health:
-
-    enabled 1
-    lost 0
-
-Active keys:
-
-    identity_changes
-    privilege_changes
-    ssh_config_changes
-    audit_config_changes
-
-No legacy -w rules remain in the final CyberLab policy.
-
-Snapshot taken before modernization:
-
-    Pre-Auditd-Policy-Modernization
-
----
-
-# 10. Linux Account Creation Detection
-
-Initial testing showed that monitoring modifications to:
-
-- /etc/passwd
-- /etc/group
-- /etc/shadow
-- /etc/gshadow
-
-generated multiple alerts for one user creation operation.
-
-This was technically correct but too noisy for a SOC environment.
-
-Native Auditd account events were investigated instead.
-
-Auditd generated:
-
-    type=ADD_USER
-
-for successful user creation.
-
-A custom Wazuh detection was therefore created using the semantic ADD_USER event.
-
-Custom rule:
-
-    100200
-
-Level:
-
-    8
-
-Description:
-
-    Linux user account created successfully via Auditd.
-
-MITRE ATT&CK:
-
-    T1136
-    Create Account
-
-Final rule:
-
-    <rule id="100200" level="8">
-      <if_sid>80700</if_sid>
-      <field name="audit.type">^ADD_USER$</field>
-      <field name="audit.res">^success$</field>
-      <field name="audit.exe">useradd</field>
-      <description>Linux user account created successfully via Auditd.</description>
-      <mitre>
-        <id>T1136</id>
-      </mitre>
-    </rule>
-
-A live account creation test generated one clean alert.
-
-Example account:
-
-    purpletest4
-
-Agent:
-
-    LAB-UBUNTU-01
-
-Decoder:
-
-    auditd
-
-Result:
-
-    success
-
-The rule was considered production-ready for the CyberLab environment.
-
-Snapshot:
-
-    Linux-Audit-Account-Creation-Working
-
----
-
-# 11. Linux Account Deletion Detection
-
-Linux account deletion was investigated using Auditd.
-
-Native event:
-
-    type=DEL_USER
-
-Example executable:
-
-    /usr/sbin/userdel
-
-Successful deletion:
-
-    res=success
-
-Custom Wazuh rule:
-
-    100201
-
-Level:
-
-    8
-
-Description:
-
-    Linux user account deleted successfully via Auditd.
-
-MITRE ATT&CK:
-
-    T1531
-    Account Access Removal
-
-Final rule:
-
-    <rule id="100201" level="8">
-      <if_sid>80700</if_sid>
-      <field name="audit.type">^DEL_USER$</field>
-      <field name="audit.res">^success$</field>
-      <field name="audit.exe">userdel</field>
-      <description>Linux user account deleted successfully via Auditd.</description>
-      <mitre>
-        <id>T1531</id>
-      </mitre>
-    </rule>
-
-Live validation successfully detected deletion of:
-
-    purpletest3
-
-Example Wazuh data:
-
-    audit.type = DEL_USER
-    audit.res = success
-    audit.exe = "/usr/sbin/userdel"
-
-Agent:
-
-    LAB-UBUNTU-01
-
-The detection was confirmed live.
-
----
-
-# 12. Linux Account Modification Detection
-
-Account modification was generated using:
-
-    sudo usermod -c "Purple Team Test Account" purpletest2
-
-Auditd generated:
-
-    type=USER_MGMT
-
-Operation:
-
-    changing-comment
-
-Executable:
-
-    /usr/sbin/usermod
-
-Result:
-
-    success
-
-Wazuh decoded:
-
-    audit.type = USER_MGMT
-    audit.exe = "/usr/sbin/usermod"
-    audit.res = success
-
-Custom rule:
-
-    100202
-
-Level:
-
-    8
-
-Description:
-
-    Linux user account modified successfully via Auditd.
-
-MITRE ATT&CK:
-
-    T1098
-    Account Manipulation
-
-Final rule:
-
-    <rule id="100202" level="8">
-      <if_sid>80700</if_sid>
-      <field name="audit.type">^USER_MGMT$</field>
-      <field name="audit.res">^success$</field>
-      <field name="audit.exe">usermod</field>
-      <description>Linux user account modified successfully via Auditd.</description>
-      <mitre>
-        <id>T1098</id>
-      </mitre>
-    </rule>
-
-Live testing successfully produced:
-
-    Rule ID: 100202
-    Level: 8
-    Agent: LAB-UBUNTU-01
-    MITRE: T1098
-
----
-
-# 13. Final Linux Account Detection Rules
-
-Wazuh rule file:
-
-    /var/ossec/etc/rules/linux_audit_rules.xml
-
-Final contents:
-
-    <!--
-      Purple Team CyberLab - Linux Auditd Detection Rules
-      Rule range: 100200+
-    -->
-
-    <group name="linux,audit,account_management,cyberlab,">
-
-      <rule id="100200" level="8">
-        <if_sid>80700</if_sid>
-        <field name="audit.type">^ADD_USER$</field>
-        <field name="audit.res">^success$</field>
-        <field name="audit.exe">useradd</field>
-        <description>Linux user account created successfully via Auditd.</description>
-        <mitre>
-          <id>T1136</id>
-        </mitre>
-      </rule>
-
-      <rule id="100201" level="8">
-        <if_sid>80700</if_sid>
-        <field name="audit.type">^DEL_USER$</field>
-        <field name="audit.res">^success$</field>
-        <field name="audit.exe">userdel</field>
-        <description>Linux user account deleted successfully via Auditd.</description>
-        <mitre>
-          <id>T1531</id>
-        </mitre>
-      </rule>
-
-      <rule id="100202" level="8">
-        <if_sid>80700</if_sid>
-        <field name="audit.type">^USER_MGMT$</field>
-        <field name="audit.res">^success$</field>
-        <field name="audit.exe">usermod</field>
-        <description>Linux user account modified successfully via Auditd.</description>
-        <mitre>
-          <id>T1098</id>
-        </mitre>
-      </rule>
-
-    </group>
-
-Snapshot taken before implementing these rules:
-
-    Pre-Linux-Audit-Detection-Rules
-
----
-
-# 14. File Integrity Monitoring
-
-The original Wazuh configuration monitored /etc using scheduled scans.
-
-Wazuh logs showed:
-
-    File integrity monitoring scan frequency: 43200 seconds
-
-This provided baseline integrity monitoring but was insufficient for rapid detection of sensitive configuration changes.
-
-A targeted real-time FIM configuration was therefore added for security-sensitive directories.
-
-Before changing the configuration, a backup was created:
-
-    /var/ossec/etc/ossec.conf.pre-realtime-fim
-
-Snapshot:
-
-    Pre-Realtime-Linux-FIM
-
-The following configuration was added inside the existing <syscheck> section:
-
-    <directories realtime="yes" whodata="yes">/etc/ssh,/etc/sudoers.d</directories>
-
-The existing scheduled /etc monitoring was retained.
-
-This provides:
-
-- Broad periodic monitoring of /etc
-- Immediate monitoring of sensitive SSH configuration
-- Immediate monitoring of sudo configuration
-
-The configuration was validated using:
-
-    sudo /var/ossec/bin/wazuh-syscheckd -t
-
-The Wazuh agent was restarted and remained active.
-
----
-
-# 15. Real-Time FIM Validation
-
-A harmless test file was created:
-
-    /etc/ssh/cyberlab-fim-test.txt
-
-The file was modified with:
-
-    Purple Team FIM test
-
-Wazuh immediately generated a real-time integrity event.
-
-Rule:
-
-    550
-
-Level:
-
-    7
-
-Description:
-
-    Integrity checksum changed.
-
-MITRE ATT&CK:
-
-    T1565.001
-    Stored Data Manipulation
-
-Wazuh captured:
-
-- File path
-- Monitoring mode
-- Previous size
-- New size
-- Previous modification time
-- New modification time
-- Previous MD5
-- New MD5
-- Previous SHA1
-- New SHA1
-- Previous SHA256
-- New SHA256
-- Owner
-- Group
-- Permissions
-- Inode
-
-Monitoring mode:
-
-    realtime
-
-File creation was also detected.
-
-Rule:
-
-    554
-
-Description:
-
-    File added to the system.
-
-Deletion was detected after cleanup.
-
-Rule:
-
-    553
-
-Level:
-
-    7
-
-Description:
-
-    File deleted.
-
-MITRE ATT&CK:
-
-    T1070.004
-    File Deletion
-
-    T1485
-    Data Destruction
-
-The test file was removed after validation:
-
-    sudo rm -f /etc/ssh/cyberlab-fim-test.txt
-
-Real-time FIM was therefore successfully validated for:
-
-    Create
-    Modify
-    Delete
-
----
-
-# 16. Package Monitoring
-
-LAB-UBUNTU-01 already collected:
-
-    /var/log/dpkg.log
-
-A harmless package installation was used to validate package telemetry:
-
-    sudo apt install -y tree
-
-Wazuh generated:
-
-Rule:
-
-    2901
-
-Description:
-
-    New dpkg (Debian Package) requested to install.
-
-Package:
-
-    tree
-
-Additional installation events included:
-
-Rule:
-
-    2904
-
-Level:
-
-    7
-
-Description:
-
-    Dpkg (Debian Package) half configured.
-
-Final installation detection:
-
-Rule:
-
-    2902
-
-Level:
-
-    7
-
-Description:
-
-    New dpkg (Debian Package) installed.
-
-Package:
-
-    tree
-
-Architecture:
-
-    amd64
-
-This confirmed that software installation activity is visible to the SIEM.
-
----
-
-# 17. Linux Service Monitoring
-
-Systemd service monitoring was added to identify suspicious stopping of important security services.
-
-Initial testing used:
-
-    rsyslog.service
-
-Native journal events included:
-
-    Stopping rsyslog.service - System Logging Service...
-    Stopped rsyslog.service - System Logging Service.
-    Starting rsyslog.service - System Logging Service...
-    Started rsyslog.service - System Logging Service.
-
-Wazuh decoded these events using:
-
-    decoder = systemd
-
-Built-in parent rule:
-
-    40700
-
-Description:
-
-    Systemd rules
-
----
-
-# 18. Initial Systemd Detection Attempt
-
-Initial custom service rules matched every service start and stop.
-
-Rules:
-
-    100203
-    100204
-
-This worked technically but resulted in excessive dashboard noise because normal background systemd activity triggered many alerts.
-
-The detection strategy was therefore tuned.
-
-This was an important detection-engineering lesson:
-
-A detection is not considered good simply because it triggers.
-
-A production-quality detection should also be:
-
-- Relevant
-- Actionable
-- Low-noise
-- Understandable by an analyst
-- Appropriate for the environment
-
----
-
-# 19. Tuned Critical Service Monitoring
-
-Monitoring was restricted to important security-related Linux services:
-
-    ssh
-    auditd
-    rsyslog
-    wazuh-agent
-
-Final Wazuh rule file:
-
-    /var/ossec/etc/rules/linux_systemd_rules.xml
-
-Final configuration:
-
-    <!-- Purple Team CyberLab - Linux Critical Service Detection -->
-
-    <group name="linux,systemd,service_management,cyberlab,">
-
-      <rule id="100203" level="8">
-        <if_sid>40700</if_sid>
-        <regex type="pcre2">^Stopped (?:ssh|auditd|rsyslog|wazuh-agent)\.service</regex>
-        <description>Critical Linux security service stopped.</description>
-        <mitre>
-          <id>T1489</id>
-        </mitre>
-      </rule>
-
-      <rule id="100204" level="4">
-        <if_sid>40700</if_sid>
-        <regex type="pcre2">^Started (?:ssh|auditd|rsyslog|wazuh-agent)\.service</regex>
-        <description>Critical Linux security service started.</description>
-      </rule>
-
-    </group>
-
-The use of PCRE2 was required for grouped alternation in the service list.
-
-Configuration validation:
-
-    sudo /var/ossec/bin/wazuh-analysisd -t
-
-Wazuh Manager restart:
-
-    sudo systemctl restart wazuh-manager
-
-Manager status:
-
-    active
-
-Snapshot taken before this detection engineering work:
-
-    Pre-Linux-Systemd-Detection-Rules
-
----
-
-# 20. Critical Service Detection Validation
-
-A controlled restart was performed:
-
-    sudo systemctl restart rsyslog
-
-The following custom alerts were generated.
-
-Stopped service:
-
-    Rule ID: 100203
-    Level: 8
-    Description: Critical Linux security service stopped.
-    MITRE: T1489
-    Technique: Service Stop
-    Agent: LAB-UBUNTU-01
-    Service: rsyslog.service
-
-Started service:
-
-    Rule ID: 100204
-    Level: 4
-    Description: Critical Linux security service started.
-    Agent: LAB-UBUNTU-01
-    Service: rsyslog.service
-
-This confirmed clean detection of critical Linux service lifecycle events without alerting on every systemd service.
-
----
-
-# 21. Custom Linux Detection Summary
-
-Custom Wazuh detection range:
-
-    100200+
-
-Final custom detections:
-
-    100200
-    Linux user account created successfully via Auditd.
-    Level 8
-    MITRE T1136
-
-    100201
-    Linux user account deleted successfully via Auditd.
-    Level 8
-    MITRE T1531
-
-    100202
-    Linux user account modified successfully via Auditd.
-    Level 8
-    MITRE T1098
-
-    100203
-    Critical Linux security service stopped.
-    Level 8
-    MITRE T1489
-
-    100204
-    Critical Linux security service started.
-    Level 4
-
-These rules complement rather than replace the existing Wazuh Linux ruleset.
-
----
-
-# 22. Built-In Wazuh Rules Validated
-
-The following Wazuh built-in detections were successfully observed during testing:
-
-    5402
-    Successful sudo to ROOT executed.
-
-    5501
-    PAM: Login session opened.
-
-    5502
-    PAM: Login session closed.
-
-    5503
-    PAM: User login failed.
-
-    5710
-    sshd: Attempt to login using a non-existent user.
-
-    5715
-    sshd: authentication success.
-
-    550
-    Integrity checksum changed.
-
-    553
-    File deleted.
-
-    554
-    File added to the system.
-
-    2901
-    New dpkg package requested to install.
-
-    2902
-    New dpkg package installed.
-
-    2904
-    Dpkg package half configured.
-
-    80705
-    Auditd: Configuration changed.
-
-These rules provide broad Linux endpoint visibility without unnecessary custom rule duplication.
-
----
-
-# 23. Test Account Cleanup
-
-Several temporary Linux accounts were used during detection engineering.
-
-Examples included:
-
-    purpletest
-    purpletest2
-    purpletest3
-    purpletest4
-
-All temporary accounts were removed after testing.
-
-LAB-UBUNTU-01 verification:
-
-    Ubuntu test accounts: CLEAN
-
-An accidental test account was also checked on LAB-SIEM-01.
-
-Verification:
-
-    SIEM accidental test account: CLEAN
-
-No Purple Team test accounts remain.
-
----
-
-# 24. Wazuh Dashboard Validation
-
-The Linux endpoint detections were verified in the Wazuh Dashboard.
-
-Custom rule search included:
-
-    agent.id:"002" AND (rule.id:100200 OR rule.id:100201 OR rule.id:100202 OR rule.id:100203 OR rule.id:100204)
-
-This confirmed visibility of:
-
-    Account creation
-    Account deletion
-    Account modification
-    Service stop
-    Service start
-
-Additional built-in telemetry was verified for:
-
-    SSH authentication
-    SSH failures
-    PAM activity
-    Sudo activity
-    File integrity monitoring
-    Package installation
-
-During dashboard review, the original broad systemd service rules were identified as too noisy.
-
-The rules were subsequently tuned to security-critical services only.
-
-Historical alerts from the broad rules remain in the index but do not represent the final detection logic.
-
----
-
-# 25. Security Content Assessment Note
-
-The Wazuh agent attempted to load:
-
-    cis_ubuntu22-04.yml
-
-The endpoint runs:
-
-    Ubuntu 26.04.1 LTS
-
-The Ubuntu 22.04 benchmark was therefore skipped.
-
-The older benchmark was intentionally NOT forced onto Ubuntu 26.04.
-
-Reason:
-
-Using an unsupported CIS benchmark can generate misleading compliance results and create false confidence.
-
-A properly supported Ubuntu 26.04 security baseline should be introduced when compatible policy content is available or when a custom benchmark is intentionally designed and validated.
-
-This remains a future hardening item and does not affect the endpoint telemetry completed in this phase.
-
----
-
-# 26. Final Endpoint Health Validation
-
-LAB-UBUNTU-01 final service state:
-
-    wazuh-agent: active
-    auditd: active
-    ssh: active
-    rsyslog: active
-
-Audit subsystem:
-
-    enabled 1
-    lost 0
-
-Storage:
-
-    Filesystem: /dev/mapper/ubuntu--vg-ubuntu--lv
-    Size: 19G
-    Used: 5.3G
-    Available: 13G
-    Utilization: 30%
-
-The endpoint was healthy at completion.
-
----
-
-# 27. Final SIEM Health Validation
-
-LAB-SIEM-01 final services:
-
-    wazuh-manager: active
-    wazuh-indexer: active
-    wazuh-dashboard: active
-    filebeat: active
-
-Connected agents:
-
-    ID 000
-    lab-siem-01
-    Active/Local
-
-    ID 001
-    LAB-WIN-01
-    Active
-
-    ID 002
-    LAB-UBUNTU-01
-    Active
-
-This confirmed successful endpoint-to-SIEM communication at completion.
-
----
-
-# 28. Snapshot History
-
-Important snapshots associated with this phase include:
-
-LAB-UBUNTU-01:
-
-    Pre-Linux-Security-Monitoring
-    Linux-Audit-Account-Creation-Working
-    Pre-Realtime-Linux-FIM
-    Pre-Auditd-Policy-Modernization
-    Linux-Security-Monitoring-Complete
-
-LAB-SIEM-01:
-
-    Pre-Linux-Audit-Detection-Rules
-    Pre-Linux-Systemd-Detection-Rules
-    Linux-Detection-Rules-Complete
-
-The final snapshots represent the stable recovery point for the completed Linux monitoring phase.
-
----
-
-# 29. Final Monitoring Coverage
-
-The Linux endpoint now provides visibility across the following security domains:
-
-Authentication
-    SSH successful authentication
-    SSH invalid users
-    PAM failures
-    PAM sessions
-
-Privilege escalation
-    sudo execution
-    command visibility
-
-Account management
-    Account creation
-    Account modification
-    Account deletion
-
-File integrity
-    Sensitive SSH configuration
-    Sudo configuration
-    File creation
-    File modification
-    File deletion
-    Cryptographic hash changes
-
-Audit subsystem
-    Identity database changes
-    Privilege configuration changes
-    SSH configuration changes
-    Audit configuration changes
-
-Software management
-    Package installation
-    dpkg state changes
-
-Service monitoring
-    Critical security service stopping
-    Critical security service starting
-
-SIEM
-    Wazuh decoding
-    Custom detection rules
-    MITRE ATT&CK mapping
-    Dashboard visibility
-
----
-
-# 30. Detection Engineering Lessons
-
-Several important Purple Team principles were demonstrated during this phase.
-
-## Native semantic events are preferable to noisy indirect indicators
-
-Initial account creation monitoring relied on file changes to:
-
-    /etc/passwd
-    /etc/group
-    /etc/shadow
-    /etc/gshadow
-
-One user creation therefore generated several events.
-
-Using Auditd's native:
-
-    ADD_USER
-    DEL_USER
-    USER_MGMT
-
-events produced much cleaner detections.
-
-## Existing rules should be reused when they already provide good coverage
-
-Custom rules were not created for:
-
-    SSH authentication
-    PAM
-    sudo
-    dpkg
-    standard FIM
-
-because Wazuh already had useful built-in detections.
-
-## Detection quality matters more than detection quantity
-
-The initial systemd rule detected every service stop.
-
-This created excessive noise.
-
-The rule was therefore restricted to:
-
-    ssh
-    auditd
-    rsyslog
-    wazuh-agent
-
-This produced more useful SOC telemetry.
-
-## Network security controls should not be weakened for monitoring tests
-
-ICMP between SERVERNET and SOCNET was not enabled simply to make ping succeed.
-
-Wazuh agent connectivity was used to establish actual monitoring health.
-
-## Benchmarks should match the operating system
-
-The Ubuntu 22.04 CIS policy was not forced onto Ubuntu 26.04.
-
-Unsupported compliance content should not be treated as authoritative.
-
----
-
-# 31. Current Completion Status
-
-Linux endpoint security monitoring is complete.
-
-Completed capabilities:
-
-    [COMPLETE] Wazuh agent connectivity
-    [COMPLETE] Journald monitoring
-    [COMPLETE] SSH authentication monitoring
-    [COMPLETE] PAM monitoring
-    [COMPLETE] sudo monitoring
-    [COMPLETE] Auditd installation
-    [COMPLETE] Auditd ingestion into Wazuh
-    [COMPLETE] Account creation detection
-    [COMPLETE] Account deletion detection
-    [COMPLETE] Account modification detection
-    [COMPLETE] Modern Auditd security policy
-    [COMPLETE] Scheduled FIM
-    [COMPLETE] Targeted real-time FIM
-    [COMPLETE] FIM create/modify/delete validation
-    [COMPLETE] Package installation monitoring
-    [COMPLETE] Critical systemd service monitoring
-    [COMPLETE] Detection tuning
-    [COMPLETE] Dashboard verification
-    [COMPLETE] Test account cleanup
-    [COMPLETE] Final service health validation
-    [COMPLETE] Final VirtualBox snapshots
-
----
-
-# 32. Final Architecture State
-
-The completed Purple Team CyberLab currently includes security telemetry from:
-
-Windows Endpoint
-    LAB-WIN-01
-
-Linux Endpoint
-    LAB-UBUNTU-01
-
-Firewall
-    LAB-FW-01 / OPNsense
-
-Network IDS
-    Suricata
-
-SIEM
-    LAB-SIEM-01 / Wazuh
-
-Validated security telemetry currently includes:
-
-Windows
-    Sysmon
-    PowerShell
-    Windows auditing
-    Defender
-    Windows Firewall
-    File Integrity Monitoring
-    Custom detection engineering
-
-Network
-    OPNsense firewall logs
-    Suricata EVE JSON
-    IDS alerts
-    Firewall correlation
-
-Linux
-    Auditd
-    SSH
-    PAM
-    sudo
-    Linux account management
-    File integrity
-    Package changes
-    Critical system services
-
-The next infrastructure phase is:
-
-    AD-NET
-    10.10.50.0/24
-
-This phase will introduce:
-
-    Windows Server
-    Active Directory Domain Services
-    DNS
-    Domain users and groups
-    Organizational Units
-    Group Policy
-    Domain-joined workstations
-    Domain Controller telemetry
-    Authentication monitoring
-    Kerberos monitoring
-    Privileged account monitoring
-    Active Directory attack-and-detection validation
-
-After AD-NET and the DMZ are completed, the environment will transition from infrastructure building into realistic SOC and Purple Team operational simulations.
+Future work should focus on realistic Linux attack scenarios, alert triage, threat hunting, privilege-escalation detection, persistence detection, and further rule development based on actual telemetry rather than adding monitoring components without a clear operational need.
