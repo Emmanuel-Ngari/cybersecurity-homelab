@@ -1,546 +1,400 @@
-# Professional Cybersecurity Homelab — Master Build & Learning Journal
+# Cybersecurity Home Lab Build Journal
 
-## Project Owner
+## Overview
 
-**GitHub:** Emmanuel-Ngari  
-**Repository:** cybersecurity-homelab
+This document records the complete chronological evolution of the Cybersecurity Home Lab from its earliest flat-network stage through the final validated six-zone architecture.
 
----
+The project began as a simple hands-on environment for learning networking, Linux administration, Windows administration, scanning, SSH, Hydra, and fail2ban.
 
-# 1. Purpose of This Journal
+Over time, it evolved into a structured enterprise-style CyberLab with:
 
-This document records the complete development of my professional cybersecurity homelab from the beginning.
-
-The objective is not only to document what exists in the lab, but also to record:
-
-- What I installed
-- Why I installed it
-- How the network evolved
-- Commands used
-- Configuration decisions
-- Firewall policies
-- Troubleshooting
-- Errors and failures
-- Recovery procedures
-- Testing
-- Snapshots
-- Lessons learned
-- Security architecture decisions
-- Future improvements
-
-This journal is also intended to help me explain my laboratory confidently during:
-
-- Cybersecurity interviews
-- Portfolio reviews
-- Technical discussions
-- Certification preparation
-- SOC interviews
-- Network security interviews
-- Penetration testing interviews
-- Personal revision
-
-Where an exact command from an early stage of the project was not preserved, I document the verified action rather than inventing a command.
-
----
-
-# 2. Project Philosophy
-
-The laboratory is being built around the following learning cycle:
-
-**Learn → Build → Break → Troubleshoot → Fix → Test → Document → Repeat**
-
-The operational workflow used for major changes is:
-
-**Snapshot → Change → Test → Verify → Backup if needed → Document → Continue**
-
-The purpose of this workflow is to make the environment:
-
-- Recoverable
-- Repeatable
-- Documented
-- Professionally managed
-- Safe for experimentation
-
----
-
-# 3. Original Lab Goal
-
-The original goal was to build a cybersecurity homelab for both offensive and defensive security.
-
-## Offensive Security Goals
-
-The offensive side of the lab is intended to support:
-
-- Linux security
-- Reconnaissance
-- Network enumeration
-- Vulnerability scanning
-- Ethical hacking
-- Penetration testing
-- Web security
-- Credential attack simulations
-- Active Directory attacks
-- Network attacks
-- Red-team exercises
-
-## Defensive Security Goals
-
-The defensive side is intended to support:
-
-- Firewall administration
-- Network segmentation
-- Endpoint monitoring
-- Log analysis
-- Security Information and Event Management
-- IDS/IPS
-- Threat detection
-- Vulnerability detection
-- Incident investigation
-- Incident response
-- Security hardening
-- SOC analyst exercises
-- MITRE ATT&CK mapping
-
-The long-term objective is to create a realistic attack-and-defense cyber range.
-
----
-
-# 4. Physical Host Computer
-
-The main laboratory runs on a Windows laptop.
-
-Known hardware specifications include:
-
-- CPU: 12th Gen Intel Core i7-1260P
-- Physical cores: 12
-- Logical processors: 16
-- RAM: approximately 16 GB
-- Virtualization platform: Oracle VirtualBox
-- Host operating system: Windows
-
-The Windows host has changed editions during the project, including Windows 11 Home and Windows 11 Enterprise Evaluation environments.
-
-Hardware virtualization support was required for VirtualBox.
-
----
-
-# 5. Virtualization Preparation
-
-Before building the environment, hardware virtualization had to be available.
-
-Virtualization support was checked and enabled where necessary through system firmware/BIOS.
-
-This was important because VirtualBox relies on processor virtualization technologies such as Intel VT-x.
-
----
-
-# 6. Installing Oracle VirtualBox
-
-Oracle VirtualBox was downloaded and installed on the Windows host.
-
-VirtualBox became the primary hypervisor for the cybersecurity environment.
-
-The lab initially started with three main virtual machines:
-
-- Kali Linux
-- Windows
-- Ubuntu Server
-
-The environment later expanded to include:
-
-- OPNsense firewall
-- Dedicated SIEM server
-- Multiple isolated security networks
-
-Current major VM roles include:
-
-| VM | Role |
-| --- | --- |
-| LAB-FW-01 | Firewall / Router |
-| LAB-KALI-01 | Offensive Security Workstation |
-| LAB-WIN-01 | Windows Endpoint / Administration |
-| LAB-UBUNTU-01 | Linux Server |
-| LAB-SIEM-01 | SOC / Wazuh SIEM |
-
-Future systems are planned for:
-
+- OPNsense
+- network segmentation
+- Wazuh SIEM
+- Sysmon
+- PowerShell logging
+- advanced Windows auditing
+- Defender monitoring
+- Windows Firewall telemetry
+- Linux auditd
+- custom detection engineering
+- Suricata IDS
 - Active Directory
-- Windows Server
-- DMZ services
-- Vulnerable targets
-- Additional monitoring systems
+- Group Policy
+- Domain Controller monitoring
+- DMZ infrastructure
+- Nginx
+- restricted administrative access
+- centralized telemetry
+- final six-zone validation
+
+The lab is now considered infrastructure-complete and ready for realistic SOC and Purple Team operations.
 
 ---
 
-# 7. Initial Three-VM Architecture
+# Phase 1 — Original Flat Lab
 
-The first laboratory architecture was much simpler than the current environment.
+## Initial Objective
 
-The original internal VirtualBox network was:
+The project began as a practical cybersecurity learning environment.
 
-`LAB-NET`
+The earliest goals were to understand:
 
-Network:
+- basic networking
+- Linux administration
+- Windows administration
+- service discovery
+- SSH
+- host firewalls
+- brute-force testing
+- defensive blocking
+- attacker/defender interaction
+
+The lab was intentionally simple.
+
+---
+
+# Original Network
+
+The early environment used:
 
 `192.168.56.0/24`
 
-Original IP addresses included:
+Primary systems included:
 
-| Machine | IP Address |
-| --- | --- |
-| Kali | 192.168.56.10 |
-| Windows | 192.168.56.20 |
-| Ubuntu | 192.168.56.30 |
+- Kali Linux — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu Server — `192.168.56.30`
 
-VirtualBox NAT was also used for Internet access.
+VirtualBox NAT was also used to provide Internet connectivity where required.
 
-Typical VirtualBox NAT addressing included:
+At this stage, there was no central OPNsense firewall.
 
-`10.0.2.0/24`
-
-Typical VirtualBox NAT gateway:
-
-`10.0.2.2`
-
-The early design looked approximately like:
-
-    Internet
-       |
-    VirtualBox NAT
-       |
-    -------------------------
-    |           |           |
-    Kali      Windows     Ubuntu
-    |           |           |
-    ------- LAB-NET ---------
-        192.168.56.0/24
-
-This architecture was useful for learning VM networking but did not provide realistic enterprise segmentation.
+The machines could communicate relatively freely across the internal network.
 
 ---
 
-# 8. Kali Linux Deployment
+# Original Kali Configuration
 
-Kali became the offensive-security workstation.
+Kali acted as the offensive workstation.
 
-Final VM name:
+A typical configuration included:
 
-`LAB-KALI-01`
+`eth0`
 
-During the early environment Kali had two network interfaces.
+for NAT:
 
-Examples included:
+    IP: 10.0.2.15/24
+    Gateway: 10.0.2.2
 
-`10.0.2.15/24`
+and:
 
-for NAT connectivity and:
+`eth1`
 
-`192.168.56.10/24`
+for the lab:
 
-for the original laboratory network.
+    IP: 192.168.56.10/24
 
-Important Linux networking commands used during the project included:
+Routes included:
 
-    ip addr
+    default via 10.0.2.2
+    192.168.56.0/24 via eth1
 
-Short form:
+This allowed Kali to:
 
-    ip a
-
-Routing information:
-
-    ip route
-
-NetworkManager information:
-
-    nmcli
-
-Connectivity testing:
-
-    ping <destination-IP>
-
-These commands were used repeatedly to understand:
-
-- Interface addressing
-- Default routes
-- Network connectivity
-- VirtualBox adapter behavior
-- Routing through the lab
+- reach the Internet
+- communicate with lab systems
+- perform offensive testing
 
 ---
 
-# 9. Windows VM Deployment
+# Original Windows Configuration
 
-The Windows VM became the primary corporate-style endpoint.
-
-Final VM name:
-
-`LAB-WIN-01`
-
-Original laboratory IP:
+The Windows system used:
 
 `192.168.56.20/24`
 
-The Windows VM was later migrated behind OPNsense and became:
+The VirtualBox adapters were later renamed for clarity:
 
-`10.10.20.20/24`
+`Ethernet` → `NAT`
 
-Gateway:
+`Ethernet 2` → `LAB-NET`
 
-`10.10.20.1`
+The NAT adapter used:
 
-DNS:
+    Gateway: 10.0.2.2
+    DNS: 10.0.2.3
 
-`10.10.20.1`
-
-Windows PowerShell became an important troubleshooting and verification tool.
-
-A major command used throughout the environment was:
-
-    Test-NetConnection <destination> -Port <port>
-
-For example:
-
-    Test-NetConnection 10.10.40.10 -Port 443
-
-This allowed TCP connectivity to be tested between security zones.
+The internal interface handled lab traffic.
 
 ---
 
-# 10. Ubuntu Server Deployment
+# Original Ubuntu Configuration
 
-Ubuntu became the protected Linux server in the environment.
+Ubuntu Server used:
 
-Final VM name:
+`192.168.56.30`
 
-`LAB-UBUNTU-01`
+It became the first major Linux target in the environment.
 
-The Ubuntu system was used to practice:
+The server was used for:
 
+- SSH
 - Linux administration
-- Networking
-- Service management
-- Server security
-- Wazuh monitoring
-- Cross-zone firewall testing
-
-Some important commands used during the Linux learning stage included:
-
-    uname -a
-
-This displays kernel and architecture information.
-
-Memory information:
-
-    free -h
-
-CPU information:
-
-    lscpu
-
-Network interfaces:
-
-    ip addr
-
-Routing:
-
-    ip route
-
-The original Ubuntu address was:
-
-`192.168.56.30/24`
-
-It was later migrated to:
-
-`10.10.30.30/24`
-
-Gateway:
-
-`10.10.30.1`
-
-DNS:
-
-`10.10.30.1`
+- attacker testing
+- defensive controls
 
 ---
 
-# 11. Why the Original Flat Network Was Replaced
+# Early Connectivity Testing
 
-The original LAB-NET architecture allowed the machines to communicate too freely.
+The first stage focused on ensuring the machines could communicate.
 
-That architecture was good for learning basic networking but not ideal for simulating a professional environment.
+Tests included:
 
-The decision was made to introduce a real firewall/router between networks.
+- ping
+- SSH
+- Nmap
+- Windows firewall rules
+- VirtualBox adapter troubleshooting
 
-OPNsense was selected.
+Windows-to-Kali connectivity was eventually confirmed.
 
-The design changed from:
+This provided the foundation for later attack and defense exercises.
+
+---
+
+# Phase 2 — Early Offensive and Defensive Exercises
+
+## Nmap
+
+Kali used Nmap to scan Ubuntu and identify exposed services.
+
+An early result showed:
+
+`22/tcp open`
+
+This confirmed that:
+
+- Ubuntu was reachable
+- SSH was listening
+- Kali could enumerate services
+
+This was one of the first practical attacker-side validations.
+
+---
+
+# SSH
+
+Ubuntu SSH was enabled.
+
+Kali could connect to the server.
+
+This created the first realistic attacker-to-target service path in the lab.
+
+SSH became the focus of several early defensive exercises.
+
+---
+
+# Hydra
+
+Hydra was used against the Ubuntu SSH service in a controlled lab scenario.
+
+The goal was not simply to guess passwords.
+
+The exercise was used to observe:
+
+- repeated authentication failures
+- SSH logs
+- defensive response
+- attacker behaviour after blocking
+
+---
+
+# fail2ban
+
+fail2ban was installed and configured on Ubuntu.
+
+The sequence became:
 
     Kali
-    Windows
-    Ubuntu
-       |
-    LAB-NET
+      |
+      v
+    Repeated SSH Failures
+      |
+      v
+    Ubuntu Authentication Logs
+      |
+      v
+    fail2ban
+      |
+      v
+    Kali Source Blocked
 
-to:
+Kali then retested the server.
 
-                    Internet
-                       |
-                VirtualBox NAT
-                       |
-                   OPNsense
-                       |
-        --------------------------------
-        |              |               |
-      REDNET         CORPNET        SERVERNET
-        |              |               |
-      Kali          Windows          Ubuntu
+An earlier:
 
-This was one of the most important architectural improvements in the project.
+`22/tcp open`
+
+state could later appear:
+
+`filtered`
+
+This became one of the first complete attack-detect-block-retest cycles in the project.
 
 ---
 
-# 12. OPNsense Firewall Deployment
+# Early Purple Team Mindset
 
-A dedicated OPNsense VM was created.
+Even before the project used Wazuh or Suricata, a basic Purple Team methodology was beginning to form.
 
-VM name:
+The workflow was:
+
+    Generate Activity
+         |
+         v
+    Observe Defensive Response
+         |
+         v
+    Retest
+         |
+         v
+    Confirm Outcome
+
+This principle remained important throughout the rest of the project.
+
+---
+
+# Phase 3 — Windows and VirtualBox Troubleshooting
+
+As the environment became more complex, several host and virtualization issues had to be solved.
+
+These troubleshooting experiences became part of the engineering process.
+
+---
+
+# Windows Network Profiles
+
+The internal Windows interface initially appeared as:
+
+`Unidentified Network`
+
+with profile:
+
+`Public`
+
+This affected firewall behaviour.
+
+The project reviewed:
+
+- File and Printer Sharing rules
+- ICMP behaviour
+- Public profile restrictions
+
+This was useful experience in understanding Windows host firewall logic.
+
+---
+
+# Windows Version Evolution
+
+At different points, the Windows guest reported different version information.
+
+Earlier PowerShell output referenced an older Windows 10 Enterprise Evaluation state.
+
+The rebuilt authoritative environment eventually became:
+
+`Windows 11 Enterprise Evaluation`
+
+Version:
+
+`25H2`
+
+Build:
+
+`26200.6584`
+
+Earlier references remain part of the historical lab lifecycle.
+
+---
+
+# VirtualBox 3D Acceleration Issue
+
+During the Windows rebuild, 3D acceleration caused login or display artifacts.
+
+The setting was adjusted.
+
+The problem was resolved.
+
+This became an important troubleshooting lesson:
+
+**Not every guest OS issue originates inside the guest OS.**
+
+Virtualization settings can create misleading symptoms.
+
+---
+
+# Full-Screen and Display Stabilization
+
+Display configuration was later stabilized successfully.
+
+This made the workstation more practical for continued lab use.
+
+---
+
+# Why the Original Architecture Became Insufficient
+
+As the project matured, the flat `192.168.56.0/24` environment became unrealistic.
+
+The main limitations were:
+
+- no trust zones
+- no central firewall
+- no east-west policy
+- no dedicated SOC network
+- no identity network
+- no DMZ
+- no network IDS visibility
+
+The decision was made to rebuild the architecture around segmentation.
+
+---
+
+# Phase 4 — OPNsense Introduction
+
+OPNsense was introduced as:
 
 `LAB-FW-01`
 
-Firewall platform:
+Its role became:
 
-`OPNsense 26.7 amd64`
+- central firewall
+- router
+- network segmentation point
+- DNS service
+- NTP service
+- Internet gateway
+- log source
+- later Suricata IDS platform
 
-Approximate resources:
-
-- 2 vCPU
-- 4 GB RAM
-- 32 GB virtual disk
-
-Hostname:
-
-`lab-fw-01.cyberlab.internal`
-
-The firewall became responsible for:
-
-- Routing
-- Internet access
-- Inter-zone traffic control
-- Security segmentation
-- DNS forwarding
-- NTP access
-- Administrative restrictions
-- Logging
-- Future IDS/IPS integration
+This was the largest architectural change in the project up to that point.
 
 ---
 
-# 13. OPNsense Interfaces
+# First Segmented Architecture
 
-The original firewall interfaces included:
+The first OPNsense design introduced four internal zones:
 
-## WAN
+- REDNET
+- CORPNET
+- SERVERNET
+- SOCNET
 
-Interface:
-
-`em0`
-
-Address:
-
-`10.0.2.15/24`
-
-Upstream gateway:
-
-`10.0.2.2`
-
-VirtualBox network type:
-
-`NAT`
+These replaced the earlier flat-network trust model.
 
 ---
 
-## CORPNET
-
-Interface:
-
-`em1`
-
-Address:
-
-`10.10.20.1/24`
-
-Network:
-
-`10.10.20.0/24`
-
-Purpose:
-
-Trusted endpoint and administration network.
-
----
-
-## REDNET
-
-Interface:
-
-`em2`
-
-Address:
-
-`10.10.10.1/24`
-
-Network:
-
-`10.10.10.0/24`
-
-Purpose:
-
-Offensive-security / attacker network.
-
----
-
-## SERVERNET
-
-Interface:
-
-`em3`
-
-Address:
-
-`10.10.30.1/24`
-
-Network:
-
-`10.10.30.0/24`
-
-Purpose:
-
-Protected server network.
-
----
-
-# 14. Known OPNsense Interface MAC Addresses
-
-Known interface mappings include:
-
-| Interface | MAC Address |
-| --- | --- |
-| em0 | 08:00:27:3B:19:9B |
-| em1 | 08:00:27:04:74:7C |
-| em2 | 08:00:27:6C:10:29 |
-| em3 | 08:00:27:93:06:8C |
-| em4 | 08:00:27:59:A7:82 |
-
-These mappings were useful when identifying VirtualBox adapters inside OPNsense.
-
----
-
-# 15. Security Zone Design
-
-The lab was intentionally divided into different trust zones.
-
-## REDNET
+# REDNET
 
 Network:
 
@@ -550,24 +404,17 @@ Gateway:
 
 `10.10.10.1`
 
-Primary host:
+Primary system:
 
-`LAB-KALI-01`
+`LAB-KALI-01 — 10.10.10.10`
 
-Purpose:
+Role:
 
-- Offensive security
-- Attack simulation
-- Reconnaissance
-- Penetration testing
-
-Trust level:
-
-Low / untrusted internal zone.
+Offensive security network.
 
 ---
 
-## CORPNET
+# CORPNET
 
 Network:
 
@@ -577,24 +424,17 @@ Gateway:
 
 `10.10.20.1`
 
-Primary host:
+Primary system:
 
-`LAB-WIN-01`
+`LAB-WIN-01 — 10.10.20.20`
 
-Purpose:
+Role:
 
-- Corporate-style endpoint
-- Administration workstation
-- Wazuh dashboard access
-- Windows monitoring
-
-Trust level:
-
-Trusted user / management network.
+Corporate workstation network.
 
 ---
 
-## SERVERNET
+# SERVERNET
 
 Network:
 
@@ -604,20 +444,17 @@ Gateway:
 
 `10.10.30.1`
 
-Primary host:
+Primary system:
 
-`LAB-UBUNTU-01`
+`LAB-UBUNTU-01 — 10.10.30.30`
 
-Purpose:
+Role:
 
-- Linux server services
-- Protected server workloads
-- Defensive monitoring
-- Controlled attack target
+Protected internal Linux server network.
 
 ---
 
-## SOCNET
+# SOCNET
 
 Network:
 
@@ -627,3466 +464,1975 @@ Gateway:
 
 `10.10.40.1`
 
-Primary host:
+Primary system:
 
-`LAB-SIEM-01`
+`LAB-SIEM-01 — 10.10.40.10`
 
-Purpose:
+Role:
 
-- Security monitoring
-- SIEM
-- SOC services
-- Log collection
-- Detection engineering
+Security monitoring network.
 
 ---
 
-## Future AD-NET
+# Initial OPNsense Rule Philosophy
 
-Planned network:
+The rule design evolved around several principles:
 
-`10.10.50.0/24`
+- least privilege
+- specific allows
+- broad denies
+- logging at security boundaries
+- explicit service validation
 
-Purpose:
+Important early concepts included:
 
-- Active Directory
-- Domain Controller
-- Windows enterprise services
-
----
-
-## Future DMZ
-
-Planned network:
-
-`10.10.60.0/24`
-
-Purpose:
-
-- Public-facing test services
-- Vulnerable applications
-- Web servers
-- Attack simulations
+- CORPNET administration
+- REDNET containment
+- SERVERNET isolation
+- SOCNET telemetry
 
 ---
 
-# 16. Final Endpoint Addressing
+# Early CORPNET Rules
 
-Current main endpoints:
+CORPNET required access to:
 
-| Host | Zone | IP |
-| --- | --- | --- |
-| LAB-KALI-01 | REDNET | 10.10.10.10 |
-| LAB-WIN-01 | CORPNET | 10.10.20.20 |
-| LAB-UBUNTU-01 | SERVERNET | 10.10.30.30 |
-| LAB-SIEM-01 | SOCNET | 10.10.40.10 |
-
-Default gateways:
-
-| Zone | Gateway |
-| --- | --- |
-| REDNET | 10.10.10.1 |
-| CORPNET | 10.10.20.1 |
-| SERVERNET | 10.10.30.1 |
-| SOCNET | 10.10.40.1 |
-
-The endpoints use OPNsense for DNS.
-
----
-
-# 17. Removing Direct NAT From Internal Systems
-
-One of the major improvements was removing direct VirtualBox NAT access from internal hosts.
-
-Instead of:
-
-    Endpoint → VirtualBox NAT → Internet
-
-the final model became:
-
-    Endpoint
-       |
-    Internal Security Zone
-       |
-    OPNsense
-       |
-    WAN
-       |
-    VirtualBox NAT
-       |
-    Internet
-
-This allows OPNsense to control and observe network traffic.
-
----
-
-# 18. Firewall Alias Design
-
-Aliases were created in OPNsense to make policies easier to understand and maintain.
-
-Known aliases include:
-
-## ADMIN_WORKSTATION
-
-Address:
-
-`10.10.20.20`
-
-Represents:
-
-`LAB-WIN-01`
-
----
-
-## KALI_ATTACKER
-
-Address:
-
-`10.10.10.10`
-
-Represents:
-
-`LAB-KALI-01`
-
----
-
-## UBUNTU_SERVER
-
-Address:
-
-`10.10.30.30`
-
-Represents:
-
-`LAB-UBUNTU-01`
-
----
-
-## LAB_INTERNAL_NETS
-
-Used to represent internal laboratory networks.
-
----
-
-## PRIVATE_NETS
-
-Contains private IPv4 ranges including:
-
-- `10.0.0.0/8`
-- `172.16.0.0/12`
-- `192.168.0.0/16`
-
----
-
-## SERVER_ADMIN_PORTS
-
-Used for selected administrative services such as:
-
-- TCP 22
-- TCP 443
-
----
-
-## DNS_PORT
-
-Port:
-
-`53`
-
----
-
-## NTP_PORT
-
-Port:
-
-`123`
-
----
-
-# 19. CORPNET Firewall Policy
-
-Custom CORPNET firewall rules were created.
-
-The intended rule structure included:
-
-1. ALLOW Admin Workstation to OPNsense HTTPS
-2. ALLOW CORPNET to OPNsense DNS
-3. ALLOW CORPNET to OPNsense NTP
-4. BLOCK Unauthorized CORPNET Access to Firewall
-5. ALLOW Admin Workstation to SERVERNET Admin Services
-6. BLOCK CORPNET to Unauthorized Private Networks
-7. ALLOW CORPNET to Internet
-
-The default broad VirtualBox-style internal trust model was removed.
-
-The original OPNsense rule:
-
-`Default allow LAN to any`
-
-was disabled after the custom rules were tested.
-
-This moved the environment toward:
-
-**Explicit allow + default deny**
-
-instead of allowing unrestricted internal communication.
-
----
-
-# 20. REDNET Firewall Policy
-
-REDNET was treated as an attacker/untrusted zone.
-
-Rules included:
-
-1. ALLOW DNS to firewall
-2. ALLOW NTP to firewall
-3. ALLOW Kali ICMP to firewall
-4. BLOCK REDNET to OPNsense Management
-5. BLOCK REDNET to CORPNET
-6. ALLOW Kali to Ubuntu Lab Testing
-7. BLOCK REDNET to Unauthorized Private Networks
-8. ALLOW REDNET to Internet
-
-This allows Kali to perform controlled security exercises while preventing unrestricted access to trusted systems.
-
----
-
-# 21. SERVERNET Firewall Policy
-
-SERVERNET was protected with restrictions including:
-
-1. ALLOW DNS
-2. ALLOW NTP
-3. ALLOW Ubuntu ICMP
-4. BLOCK SERVERNET to OPNsense Management
-5. BLOCK SERVERNET to CORPNET
-6. BLOCK SERVERNET to REDNET
-7. BLOCK SERVERNET to Unauthorized Private Networks
-8. ALLOW SERVERNET to Internet
-
-Later, specific exceptions were added for communication with the Wazuh SIEM.
-
----
-
-# 22. Network Segmentation Testing
-
-Connectivity was tested after migrating the machines behind OPNsense.
-
-Linux tests included:
-
-    ping <destination>
-
-TCP port testing used:
-
-    nc -zv -w 5 <destination-IP> <port>
-
-Windows TCP testing used:
-
-    Test-NetConnection <destination-IP> -Port <port>
-
-Examples of expected policy behavior:
-
-- Kali → Windows: blocked
-- Ubuntu → Windows: blocked
-- Ubuntu → Kali: blocked
-- Kali → authorized Ubuntu services: allowed
-- Windows → authorized Ubuntu administrative services: allowed
-- Internal systems → Internet: allowed where explicitly permitted
-
-These tests verified that OPNsense was enforcing network segmentation.
-
----
-
-# 23. Stateful Firewall Behavior
-
-OPNsense is a stateful firewall.
-
-This means that if a permitted system initiates an authorized connection, return traffic for that connection can pass through the existing state.
-
-This allows controlled communication without requiring dangerous broad bidirectional rules.
-
-Understanding stateful inspection became an important networking lesson during the project.
-
----
-
-# 24. GitHub Repository
-
-The laboratory is documented publicly in:
-
-`Emmanuel-Ngari/cybersecurity-homelab`
-
-Known documentation created during the project includes:
-
-- `architecture/lab-architecture.md`
-- `architecture/virtualbox-networking.md`
-- `virtual-machines/kali.md`
-- `virtual-machines/windows.md`
-- `firewall/opnsense-firewall.md`
-- `firewall/security-zones.md`
-- `firewall/policy-matrix.md`
-- `firewall/firewall-rules.md`
-
-The repository will continue growing as new phases are completed.
-
----
-
-# 25. Known Git Commit Messages
-
-Known commits include:
-
-`docs: document OPNsense firewall deployment and initial policy`
-
-`docs: document OPNsense security zones and trust model`
-
-`docs: add firewall policy matrix and segmentation rules`
-
-`docs: document implemented OPNsense firewall rules`
-
-Future documentation should continue using clear professional commit messages.
-
----
-
-# 26. Adding SOCNET
-
-A dedicated Security Operations network was added after the primary network segmentation was stable.
-
-New interface:
-
-`em4`
-
-OPNsense internal identifier:
-
-`opt3`
-
-Description:
-
-`SOCNET`
-
-OPNsense address:
-
-`10.10.40.1/24`
-
-Network:
-
-`10.10.40.0/24`
-
-The interface was enabled and configured as part of the firewall.
-
-The route was verified as:
-
-`10.10.40.0/24`
-
-through:
-
-`em4`
-
-SOCNET was also included in outbound NAT so systems in SOCNET could access the Internet for updates and package installations.
-
----
-
-# 27. SOCNET Security Model
-
-SOCNET is intended to be a protected monitoring zone.
-
-The design principle is:
-
-- Endpoints may send explicitly authorized monitoring traffic to SOCNET.
-- SOCNET should not automatically receive unrestricted access to every internal zone.
-- Administrative access should remain controlled.
-- Monitoring services should use specific required ports.
-
-This reduces the risk of turning the SIEM server into an unrestricted pivot point.
-
----
-
-# 28. Building LAB-SIEM-01
-
-A dedicated Ubuntu Server VM was created.
-
-VM name:
-
-`LAB-SIEM-01`
-
-Hostname:
-
-`lab-siem-01`
-
-User:
-
-`emmanuel`
-
-Operating system:
-
-`Ubuntu Server 26.04.1 LTS`
-
-Architecture:
-
-`x86_64`
-
-Approximate allocated memory:
-
-`8 GB`
-
-Virtual disk:
-
-`60 GB`
-
-Network adapter:
-
-Internal Network
-
-Network name:
-
-`SOC-NET`
-
-IP address:
-
-`10.10.40.10/24`
-
-Gateway:
-
-`10.10.40.1`
-
-DNS:
-
-`10.10.40.1`
-
----
-
-# 29. LAB-SIEM-01 Storage Configuration
-
-Ubuntu's installer initially allocated only approximately 29 GB of the virtual disk to the root logical volume.
-
-Because SIEM systems can generate significant log and index data, the root logical volume was expanded during installation.
-
-Final root filesystem capacity became approximately:
-
-`53–54 GB`
-
-A small amount of unused space remained in the volume group.
-
-This was a useful lesson in Linux LVM configuration and SIEM storage planning.
-
----
-
-# 30. SIEM Network Verification
-
-After installation, connectivity was tested.
-
-Gateway test:
-
-    ping 10.10.40.1
-
-External connectivity:
-
-    ping 1.1.1.1
-
-DNS resolution was also tested.
-
-HTTPS connectivity was tested using `curl`.
-
-The SIEM server successfully reached:
-
-- OPNsense gateway
-- Internet
+- OPNsense management
 - DNS
+- selected SERVERNET services
+- Internet
 
-At the same time, firewall segmentation prevented unauthorized SOCNET initiation into:
+Windows was not given unrestricted access to REDNET.
+
+---
+
+# Early REDNET Rules
+
+REDNET retained:
+
+- DNS
+- Internet access
+- selected attack paths toward Ubuntu
+
+but was prevented from freely reaching:
+
+- CORPNET
+- firewall management
+- protected services
+
+This was the first time attacker access became an explicit policy choice rather than flat-network behaviour.
+
+---
+
+# Early SERVERNET Rules
+
+SERVERNET retained:
+
+- DNS
+- NTP
+- Internet access
+- selected administration
+
+while unnecessary access to:
 
 - CORPNET
 - REDNET
-- SERVERNET
 
-Management access to OPNsense from SOCNET was also restricted.
-
----
-
-# 31. SSH Administration of LAB-SIEM-01
-
-SSH was installed during Ubuntu Server deployment.
-
-From Windows, connectivity was tested with:
-
-    Test-NetConnection 10.10.40.10 -Port 22
-
-The connection succeeded.
-
-SSH login was then tested:
-
-    ssh emmanuel@10.10.40.10
-
-This proved the authorized path:
-
-    LAB-WIN-01
-        |
-    CORPNET
-        |
-    OPNsense
-        |
-    SOCNET
-        |
-    LAB-SIEM-01
+was restricted.
 
 ---
 
-# 32. Installing Wazuh
+# Phase 5 — Wazuh SIEM Deployment
 
-Wazuh was selected as the primary SIEM/XDR platform.
-
-Version installed:
-
-`4.14.7`
-
-The official installer was downloaded from:
-
-`https://packages.wazuh.com/4.14/wazuh-install.sh`
-
-The all-in-one installation was executed using:
-
-    sudo bash ./wazuh-install.sh -a
-
-The installation deployed:
-
-- Wazuh Manager
-- Wazuh Indexer
-- Wazuh Dashboard
-- Filebeat
-
-Ubuntu 26.04 produced a compatibility warning because it was not included in the installer's recommended Ubuntu versions.
-
-Because the system is an isolated laboratory and not production infrastructure, the installation was allowed to continue and was thoroughly tested.
-
----
-
-# 33. Initial Wazuh Verification
-
-Major Wazuh services were verified after installation.
-
-Relevant service checks included:
-
-    sudo systemctl status wazuh-manager
-
-    sudo systemctl status wazuh-indexer
-
-    sudo systemctl status wazuh-dashboard
-
-Filebeat was also confirmed running.
-
-The Wazuh dashboard became accessible at:
-
-`https://10.10.40.10`
-
----
-
-# 34. Wazuh Communication Ports
-
-Important Wazuh communication ports currently used include:
-
-## Agent communication
-
-TCP:
-
-`1514`
-
----
-
-## Agent registration/enrollment
-
-TCP:
-
-`1515`
-
----
-
-## Wazuh Dashboard
-
-TCP:
-
-`443`
-
----
-
-## Wazuh Indexer / OpenSearch
-
-TCP:
-
-`9200`
-
-The indexer is primarily accessed locally by Wazuh components.
-
----
-
-# 35. Wazuh Firewall Aliases
-
-Additional aliases were created for Wazuh.
-
-Known aliases include:
-
-- `WAZUH_SERVER`
-- `WAZUH_AGENT_PORTS`
-- `WAZUH_DASHBOARD_PORT`
-
-These were used to make the firewall configuration readable and maintainable.
-
----
-
-# 36. CORPNET Wazuh Rules
-
-Rules were added to permit the Windows workstation to communicate with Wazuh.
-
-Examples included:
-
-`ALLOW - Windows Endpoint to Wazuh Agent Services`
-
-Source:
-
-`ADMIN_WORKSTATION`
-
-Destination:
-
-`WAZUH_SERVER`
-
-Ports:
-
-`WAZUH_AGENT_PORTS`
-
-Another rule allowed:
-
-`ADMIN_WORKSTATION`
-
-to access:
-
-`WAZUH_SERVER`
-
-using:
-
-`WAZUH_DASHBOARD_PORT`
-
-These rules were placed above broad internal private-network blocking rules.
-
----
-
-# 37. Windows Wazuh Agent Installation
-
-Wazuh Agent version:
-
-`4.14.7`
-
-was installed on:
-
-`LAB-WIN-01`
-
-The first MSI installation attempt contained a command problem.
-
-The installation command was corrected.
-
-The successful installation returned:
-
-`Exit code 0`
-
-The Wazuh Windows service was inspected with:
-
-    Get-Service WazuhSvc
-
-The service initially showed:
-
-`Stopped`
-
-It was started using:
-
-    Start-Service WazuhSvc
-
-The service then showed:
-
-`Running`
-
----
-
-# 38. Windows Wazuh Connectivity Tests
-
-Windows successfully tested communication with the Wazuh server on agent ports.
-
-The following paths were verified:
-
-`10.10.20.20 → 10.10.40.10:1514`
-
-and:
-
-`10.10.20.20 → 10.10.40.10:1515`
-
-The Windows agent eventually appeared in Wazuh as:
-
-`LAB-WIN-01`
-
-IP:
-
-`10.10.20.20`
-
-Status:
-
-`Active`
-
-Agent version:
-
-`4.14.7`
-
----
-
-# 39. Windows Wazuh Telemetry
-
-The Windows endpoint began providing security data to Wazuh.
-
-Observed information included:
-
-- System inventory
-- Security Configuration Assessment
-- Compliance information
-- Vulnerability information
-- Security events
-
-This proved the monitoring path:
-
-    LAB-WIN-01
-         |
-    CORPNET
-         |
-    OPNsense
-         |
-    SOCNET
-         |
-    LAB-SIEM-01
-
----
-
-# 40. Preparing Ubuntu for Wazuh
-
-Before modifying the Ubuntu server, a snapshot was created:
-
-`Ubuntu - Pre Wazuh Agent`
-
-Dependencies were installed for repository configuration.
-
-Known package installation:
-
-    sudo apt install gnupg apt-transport-https
-
-Repository configuration produced several real troubleshooting issues.
-
-These included:
-
-- GPG import failure
-- DNS timeouts
-- Incorrect keyring path
-- Typing mistakes
-- IPv4/IPv6 connectivity complications
-
----
-
-# 41. Wazuh GPG Key Failure
-
-The first Wazuh signing-key import failed with:
-
-`gpg: no valid OpenPGP data found`
-
-Instead of assuming the key was successfully imported, the problem was investigated.
-
-DNS connectivity toward:
-
-`packages.wazuh.com`
-
-was tested.
-
----
-
-# 42. Wazuh DNS Troubleshooting
-
-DNS was tested using:
-
-    resolvectl query packages.wazuh.com
-
-The query initially timed out.
-
-Later attempts returned valid DNS responses.
-
-IPv4 was forced when retrieving the signing key.
-
-Command used:
-
-    curl -4 -fsSL --max-time 30 https://packages.wazuh.com/key/GPG-KEY-WAZUH | head
-
-Successful output began with:
-
-`-----BEGIN PGP PUBLIC KEY BLOCK-----`
-
-This proved that the key was actually being retrieved.
-
----
-
-# 43. Wazuh Signing Key Verification
-
-The valid Wazuh key was placed at:
-
-`/usr/share/keyrings/wazuh.gpg`
-
-The key was verified using:
-
-    gpg --show-keys /usr/share/keyrings/wazuh.gpg
-
-The output identified:
-
-`Wazuh.com (Wazuh Signing Key)`
-
-Email:
-
-`support@wazuh.com`
-
-The signing key was RSA 4096-bit.
-
----
-
-# 44. Repository Typing Error
-
-A repository configuration problem occurred because:
-
-`keystrings`
-
-was typed instead of:
-
-`keyrings`
-
-This caused repository configuration problems.
-
-The path was corrected.
-
-This became an important lesson:
-
-Always verify repository paths and filenames instead of assuming installation failures are caused by networking or the package vendor.
-
----
-
-# 45. Correct Wazuh Repository
-
-The repository configuration was corrected to:
-
-`deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main`
-
-APT metadata was refreshed using IPv4:
-
-    sudo apt-get -o Acquire::ForceIPv4=true update
-
-The repository update completed without signature errors.
-
----
-
-# 46. SERVERNET to SOCNET Connectivity Failure
-
-Before installing the Ubuntu Wazuh agent, communication was tested.
-
-Port 1514:
-
-    nc -zv -w 5 10.10.40.10 1514
-
-Port 1515:
-
-    nc -zv -w 5 10.10.40.10 1515
-
-Initially the connections failed.
-
-OPNsense Live View showed the traffic being blocked.
-
-An unexpected firewall label appeared similar to:
-
-`BLOCK - SERVERNET to REDNET`
-
-even though the destination was the SOCNET Wazuh server.
-
-This indicated a firewall rule configuration problem.
-
----
-
-# 47. Firewall Troubleshooting Lesson
-
-The SERVERNET firewall rules were reviewed.
-
-A rule was corrected so that intended Wazuh traffic to SOCNET would not accidentally match a blocking rule.
-
-After correction:
-
-    nc -zv -w 5 10.10.40.10 1514
-
-succeeded.
-
-The second test:
-
-    nc -zv -w 5 10.10.40.10 1515
-
-also succeeded.
-
-This demonstrated why firewall logging is important.
-
-The troubleshooting process was:
-
-1. Test connectivity
-2. Observe failure
-3. Check firewall logs
-4. Identify matching rule
-5. Review rule configuration
-6. Correct policy
-7. Retest
-8. Verify success
-
----
-
-# 48. Ubuntu Wazuh Agent Installation
-
-The Ubuntu Wazuh agent was installed using:
-
-    sudo env WAZUH_MANAGER="10.10.40.10" WAZUH_REGISTRATION_SERVER="10.10.40.10" WAZUH_AGENT_NAME="LAB-UBUNTU-01" apt-get install -y wazuh-agent
-
-Installed version:
-
-`4.14.7-1`
-
-Systemd was refreshed:
-
-    sudo systemctl daemon-reload
-
-The service was enabled:
-
-    sudo systemctl enable wazuh-agent
-
-The service was started:
-
-    sudo systemctl start wazuh-agent
-
-Service state was checked:
-
-    sudo systemctl is-active wazuh-agent
-
-Result:
-
-`active`
-
----
-
-# 49. Ubuntu Agent Enrollment Verification
-
-Wazuh agent logs confirmed the enrollment sequence.
-
-Observed events included:
-
-- Requesting authentication key
-- No authentication password provided
-- Authentication key received
-- Attempting connection to `10.10.40.10:1514/tcp`
-- Successful connection to `10.10.40.10:1514/tcp`
-
-This proved:
-
-    LAB-UBUNTU-01
-          |
-      SERVERNET
-          |
-       OPNsense
-          |
-        SOCNET
-          |
-      LAB-SIEM-01
-
----
-
-# 50. Snapshot Management
-
-Snapshots became part of the lab change-management workflow.
-
-Known snapshots include:
-
-`LAB-SIEM-01 - Wazuh + Windows Agent Verified`
-
-`Windows - Wazuh Agent Active`
-
-`Ubuntu - Pre Wazuh Agent`
-
-Later recovery snapshots included:
-
-`SIEM - Pre Indexer Timeout Recovery`
-
-and:
-
-`SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-Snapshots are created before significant changes whenever practical.
-
-They are not a replacement for proper backups but provide useful rollback points during experimentation.
-
----
-
-# 51. OPNsense Configuration Backup
-
-An OPNsense configuration backup was exported privately.
-
-The OPNsense XML backup must not be uploaded publicly because it can contain sensitive configuration information.
-
-Sensitive configuration files are intentionally excluded from the public GitHub repository.
-
----
-
-# 52. Host Disk-Full Incident
-
-A major laboratory incident occurred when the physical Windows host completely ran out of disk space.
-
-The C: drive showed approximately:
-
-`0.00 GB free`
-
-VirtualBox reported:
-
-`Host system reported disk full. VM execution is suspended.`
-
-VirtualBox error identifier:
-
-`DrvVD_DISKFULL`
-
-Affected machines included:
-
-- LAB-WIN-01
-- LAB-SIEM-01
-
-VirtualBox suspended the machines to avoid further write failures.
-
----
-
-# 53. Host Storage Investigation
-
-Temporary files were initially cleared.
-
-This recovered very little space.
-
-A large-file investigation was then performed.
-
-Large files discovered included approximately:
-
-- 45.7 GB FIFA archive
-- 6.61 GB Windows ISO copies
-- 4.17 GB Kali ISO
-- Multiple approximately 2.73 GB Ubuntu ISOs
-- Other game files
-- Partial download files
-
-The largest unnecessary file identified was:
-
-`C:\Users\USER\Downloads\Quick Share\FIFA23-SteamRIP.com.rar`
-
-Approximate size:
-
-`45.7 GB`
-
----
-
-# 54. Safe Storage Cleanup
-
-Only the unnecessary 45.7 GB archive was deleted at that stage.
-
-The host then showed approximately:
-
-`45.70 GB free`
-
-Important safety rule:
-
-The following VirtualBox items were NOT manually deleted:
-
-- `.vdi` files
-- `.vbox` files
-- VM folders
-- Snapshot folders
-- Snapshot disk files
-
-Deleting those manually could destroy or corrupt virtual machines.
-
----
-
-# 55. Wazuh Problem After Disk-Full Incident
-
-After resuming the SIEM VM, the Wazuh dashboard displayed:
-
-`Wazuh dashboard server is not ready yet`
-
-Dashboard logs showed repeated errors:
-
-`connect ECONNREFUSED 127.0.0.1:9200`
-
-This indicated that the dashboard could not communicate with the Wazuh Indexer/OpenSearch service.
-
----
-
-# 56. Checking Wazuh Indexer Port
-
-The local OpenSearch port was checked using:
-
-    sudo ss -lntp | grep ':9200'
-
-Initially no listener was returned.
-
-This confirmed that OpenSearch was not yet listening on TCP 9200.
-
----
-
-# 57. Inspecting Wazuh Indexer Service
-
-The indexer was inspected using:
-
-    sudo systemctl status wazuh-indexer --no-pager -l
-
-The service showed a failure related to startup timeout.
-
-The Java process had exited with status:
-
-`143`
-
-The indexer had been consuming significant CPU and memory while attempting startup.
-
----
-
-# 58. Inspecting Indexer Journal
-
-The indexer journal was inspected using:
-
-    sudo journalctl -u wazuh-indexer -n 80 --no-pager
-
-The journal showed:
-
-- OpenSearch startup
-- Java warnings
-- SecurityManager deprecation warnings
-- Plugin initialization
-- Systemd startup timeout
-
-No clear evidence of catastrophic index corruption was visible.
-
----
-
-# 59. Inspecting the Wazuh Indexer Log
-
-The indexer application log was inspected using:
-
-    sudo tail -n 100 /var/log/wazuh-indexer/wazuh-cluster.log
-
-The log showed many OpenSearch modules and plugins loading.
-
-Examples included modules relating to:
-
-- OpenSearch Dashboards
-- Painless
-- Percolator
-- Reindex
-- Search pipeline
-- Transport
-- Alerting
-- Anomaly detection
-- Security
-- SQL
-- k-NN
-- Neural search
-- Reports
-
-Warnings and an audit logging configuration message were visible.
-
-However, the log did not show a clear catastrophic corruption failure.
-
-The important conclusion was:
-
-Do not destroy or modify index data without evidence.
-
----
-
-# 60. Systemd Timeout Investigation
-
-The service timeout configuration was investigated.
-
-Command:
-
-    systemctl show wazuh-indexer -p TimeoutStartUSec -p TimeoutStopUSec
-
-Observed value:
-
-`TimeoutStopUSec=infinity`
-
-Another check was performed:
-
-    systemctl show wazuh-indexer --property=TimeoutStartUSec
-
-No useful startup timeout value was returned.
-
-The actual service file was then inspected:
-
-    systemctl cat wazuh-indexer
-
-Important values included:
-
-`Type=notify`
-
-and:
-
-`OPENSEARCH_SD_NOTIFY=true`
-
-The unit also contained:
-
-`TimeoutStopSec=0`
-
-A systemd override was considered but not applied because more evidence was needed first.
-
----
-
-# 61. Recovery Snapshot Before Changes
-
-Before attempting any potentially significant recovery change, a snapshot was created:
-
-`SIEM - Pre Indexer Timeout Recovery`
-
-This created a rollback point before modifying the Wazuh service.
-
----
-
-# 62. Decision Not to Make Unnecessary Changes
-
-Potential recovery options included:
-
-- Increasing systemd timeout
-- Editing Wazuh configuration
-- Deleting locks
-- Rebuilding indexes
-- Restoring a snapshot
-- Reinstalling Wazuh
-
-None of these were immediately performed.
-
-The reason was that the logs showed continued OpenSearch initialization and no confirmed corruption.
-
-A clean shutdown/reboot was selected as the safer next diagnostic step.
-
----
-
-# 63. Clean Shutdown Procedure
-
-The virtual machines were shut down cleanly.
-
-Linux shutdown command:
-
-    sudo poweroff
-
-Windows was shut down normally through the operating system.
-
-OPNsense was powered off properly.
-
-VirtualBox was then closed.
-
-The physical Windows host was shut down normally.
-
-This was preferable to using VirtualBox Save State after the disk-full incident.
-
----
-
-# 64. Lab Startup Order
-
-When the lab was started again, systems were brought online in dependency order.
-
-First:
-
-`LAB-FW-01`
-
-The firewall was allowed to fully boot.
-
-Verified networks included:
-
-- CORPNET `10.10.20.1`
-- REDNET `10.10.10.1`
-- SERVERNET `10.10.30.1`
-- SOCNET `10.10.40.1`
-
-Then:
+The next major capability was centralized monitoring.
 
 `LAB-SIEM-01`
 
-was started.
+was deployed in:
 
-This ensured routing and DNS were available before Wazuh started.
+`SOCNET`
 
----
+Address:
 
-# 65. Wazuh Indexer Recovery
+`10.10.40.10`
 
-After the clean reboot, the Wazuh Indexer was checked again:
-
-    sudo systemctl status wazuh-indexer --no-pager -l
-
-This time the service reported:
-
-`active (running)`
-
-The Java/OpenSearch process was active.
-
-Approximate memory usage was around:
-
-`1.7 GB`
-
-This proved that the indexer could recover without modifying the systemd timeout.
+Wazuh became the central monitoring platform.
 
 ---
 
-# 66. Verifying TCP 9200 After Recovery
+# Wazuh Stack
 
-The indexer listener was checked:
+The SIEM included:
 
-    sudo ss -lntp | grep ':9200'
-
-The output showed the Java process listening on:
-
-`127.0.0.1:9200`
-
-This confirmed that OpenSearch was now operational.
-
----
-
-# 67. Wazuh Dashboard Recovery
-
-The dashboard service was checked:
-
-    sudo systemctl status wazuh-dashboard --no-pager -l
-
-Result:
-
-`active (running)`
-
-The dashboard completed plugin initialization and began listening on HTTPS.
-
-The previous:
-
-`ECONNREFUSED 127.0.0.1:9200`
-
-condition was resolved.
-
----
-
-# 68. Windows to Wazuh Dashboard Test
-
-LAB-WIN-01 was started.
-
-PowerShell was used to verify dashboard connectivity:
-
-    Test-NetConnection 10.10.40.10 -Port 443
-
-Observed values included:
-
-`ComputerName : 10.10.40.10`
-
-`RemoteAddress : 10.10.40.10`
-
-`RemotePort : 443`
-
-`InterfaceAlias : CORP-NET`
-
-`SourceAddress : 10.10.20.20`
-
-`TcpTestSucceeded : True`
-
-This proved the complete path:
-
-    LAB-WIN-01
-    10.10.20.20
-         |
-      CORPNET
-         |
-      OPNsense
-         |
-       SOCNET
-         |
-    LAB-SIEM-01
-    10.10.40.10:443
-
----
-
-# 69. Dashboard Browser Verification
-
-Microsoft Edge on LAB-WIN-01 was used to access:
-
-`https://10.10.40.10`
-
-The Wazuh dashboard loaded successfully.
-
-The dashboard showed security-event information and normal operation.
-
-This confirmed successful recovery of:
-
-- Indexer
-- Dashboard
-- HTTPS access
-- Firewall connectivity
-
----
-
-# 70. Ubuntu Agent Persistence Test
-
-LAB-UBUNTU-01 was started after the full shutdown.
-
-The agent was checked using:
-
-    sudo systemctl is-active wazuh-agent
-
-Result:
-
-`active`
-
-This proved that the Wazuh agent was correctly configured to start automatically after reboot.
-
----
-
-# 71. Final Agent Verification
-
-The Wazuh dashboard was opened on LAB-WIN-01.
-
-Two agents appeared.
-
-## LAB-WIN-01
-
-IP:
-
-`10.10.20.20`
-
-Operating system:
-
-Windows 11 Enterprise
-
-Agent version:
-
-`4.14.7`
-
-Status:
-
-`Active`
-
----
-
-## LAB-UBUNTU-01
-
-IP:
-
-`10.10.30.30`
-
-Operating system:
-
-Ubuntu 26.04.1 LTS
-
-Agent version:
-
-`4.14.7`
-
-Status:
-
-`Active`
-
-Dashboard summary showed:
-
-- Active agents: 2
-- Disconnected agents: 0
-- Pending agents: 0
-
-This completed the first multi-zone Wazuh deployment.
-
----
-
-# 72. Final SIEM Recovery Snapshot
-
-After both endpoints were verified active, a new recovery snapshot was created:
-
-`SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-This snapshot represents the current known-good SIEM state.
-
----
-
-# 73. Current Architecture
-
-The current environment is approximately:
-
-                         INTERNET
-                            |
-                     VirtualBox NAT
-                            |
-                       LAB-FW-01
-                        OPNsense
-                            |
-       ------------------------------------------------
-       |              |              |                |
-     REDNET         CORPNET       SERVERNET         SOCNET
-  10.10.10.0/24  10.10.20.0/24 10.10.30.0/24   10.10.40.0/24
-       |              |              |                |
- LAB-KALI-01      LAB-WIN-01    LAB-UBUNTU-01   LAB-SIEM-01
- 10.10.10.10      10.10.20.20    10.10.30.30     10.10.40.10
-       |              |              |                |
- Offensive        Corporate        Server            SOC
- Security         Endpoint       Monitoring          Wazuh
-
----
-
-# 74. Current OPNsense Addressing
-
-| Interface | Network | OPNsense IP |
-| --- | --- | --- |
-| WAN | VirtualBox NAT | 10.0.2.15 |
-| REDNET | 10.10.10.0/24 | 10.10.10.1 |
-| CORPNET | 10.10.20.0/24 | 10.10.20.1 |
-| SERVERNET | 10.10.30.0/24 | 10.10.30.1 |
-| SOCNET | 10.10.40.0/24 | 10.10.40.1 |
-
----
-
-# 75. Current Host Roles
-
-## LAB-FW-01
-
-Role:
-
-- Firewall
-- Router
-- NAT gateway
-- Segmentation enforcement
-- DNS path
-- Future IDS/IPS platform
-
----
-
-## LAB-KALI-01
-
-Role:
-
-- Offensive security workstation
-- Reconnaissance
-- Penetration testing
-- Controlled attacker system
-
----
-
-## LAB-WIN-01
-
-Role:
-
-- Corporate endpoint
-- Windows monitoring target
-- Administrative workstation
-- Wazuh dashboard access system
-
----
-
-## LAB-UBUNTU-01
-
-Role:
-
-- Linux server
-- Defensive monitoring target
-- Authorized attack target
-- Server security laboratory
-
----
-
-## LAB-SIEM-01
-
-Role:
-
-- Security Operations server
 - Wazuh Manager
 - Wazuh Indexer
 - Wazuh Dashboard
 - Filebeat
-- Centralized endpoint monitoring
+
+This represented the transition from local log inspection to SOC-style monitoring.
 
 ---
 
-# 76. Major Skills Practiced So Far
+# Windows Wazuh Onboarding
 
-The project has provided practical experience with:
+`LAB-WIN-01`
 
-## Virtualization
+became the first major monitored endpoint.
 
-- VirtualBox
-- VM creation
-- Virtual disks
-- VM snapshots
-- Internal networking
-- NAT
-- Resource allocation
+Final agent identity:
 
-## Networking
+    ID: 001
+    Name: LAB-WIN-01
 
-- IPv4 addressing
-- Subnetting
-- Default gateways
-- Routing
-- DNS
-- NAT
-- Stateful firewalling
-- Network segmentation
-- TCP port testing
-- ICMP testing
+The Windows monitoring capability expanded progressively.
 
-## Linux
+---
 
-- Ubuntu Server
-- Kali Linux
-- systemd
-- APT
-- GPG signing keys
-- NetworkManager
-- Linux networking
-- LVM
-- Log inspection
-- Service troubleshooting
+# Windows Security Monitoring
 
-## Windows
+The endpoint eventually provided:
 
+- Security logs
+- Sysmon
+- PowerShell logging
+- PowerShell transcription
+- advanced auditing
+- Microsoft Defender events
+- Windows Firewall events
+- File Integrity Monitoring
+
+This turned Windows into a realistic monitored corporate endpoint.
+
+---
+
+# Sysmon on Windows
+
+Sysmon was introduced to improve process visibility.
+
+The goal was to observe:
+
+- process execution
+- parent-child relationships
+- command activity
+- attacker utilities
+- suspicious binaries
+
+Wazuh successfully ingested Sysmon events.
+
+---
+
+# PowerShell Logging
+
+PowerShell visibility was expanded using:
+
+- Script Block Logging
+- Module Logging
+- transcription
+
+This allowed the SOC to see more than just the execution of `powershell.exe`.
+
+---
+
+# Advanced Windows Auditing
+
+Important audit categories included:
+
+- Logon Success
+- Logon Failure
+- Process Creation Success
+- Special Logon Success
+
+Command-line process creation was enabled.
+
+This improved investigation context.
+
+---
+
+# Windows Firewall Event Monitoring
+
+Windows Firewall telemetry included:
+
+`Event ID 5157`
+
+This helped distinguish:
+
+- host firewall blocks
+- OPNsense firewall blocks
+
+---
+
+# Defender Monitoring
+
+Microsoft Defender became another endpoint telemetry source.
+
+This provided additional defensive visibility alongside:
+
+- Sysmon
+- Security events
 - PowerShell
-- Service management
-- Network testing
-- Windows endpoint monitoring
 
-## Firewall Administration
+---
+
+# File Integrity Monitoring
+
+Wazuh FIM was also configured.
+
+This provided visibility into selected file and configuration changes.
+
+---
+
+# Phase 6 — Linux Monitoring and Detection Engineering
+
+`LAB-UBUNTU-01`
+
+was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 002
+    Name: LAB-UBUNTU-01
+
+The server moved from local-only monitoring into centralized SOC monitoring.
+
+---
+
+# auditd
+
+`auditd`
+
+was integrated into Wazuh.
+
+This provided deeper visibility into:
+
+- account activity
+- privileged changes
+- administrative actions
+
+---
+
+# Linux User Creation Detection
+
+A custom rule was validated:
+
+`Rule 100200`
+
+Purpose:
+
+Detect native Linux user creation.
+
+---
+
+# Linux User Deletion Detection
+
+Another custom rule was validated:
+
+`Rule 100201`
+
+Purpose:
+
+Detect native Linux user deletion.
+
+These were among the first formal custom detections in the project.
+
+---
+
+# Wazuh Service-Level Troubleshooting
+
+At one stage, ICMP to the SIEM failed while:
+
+`TCP/1514`
+
+worked.
+
+This became an important lesson:
+
+**Ping failure does not necessarily mean the monitoring path is broken.**
+
+The actual required service should be tested.
+
+---
+
+# Ubuntu Agent Connectivity Troubleshooting
+
+At one point, the Ubuntu agent appeared disconnected.
+
+Older logs showed errors.
+
+Recent logs showed successful connection.
+
+The manager later reported the agent:
+
+`Active`
+
+This reinforced another lesson:
+
+**Historical errors should not be treated as current failures without checking timestamps and current state.**
+
+---
+
+# Phase 7 — OPNsense Firewall Telemetry
+
+After endpoint monitoring was established, OPNsense logs were integrated into Wazuh.
+
+The firewall became both:
+
+- an enforcement device
+- a telemetry source
+
+---
+
+# Firewall Detection
+
+A Wazuh firewall correlation rule was validated:
+
+`Rule 87702`
+
+This added network-policy violation visibility to the SOC.
+
+---
+
+# Why Firewall Logs Mattered
+
+A blocked packet may never reach the destination host.
+
+Without firewall telemetry, some attack attempts would have no endpoint evidence.
+
+OPNsense logging therefore became an important detection source.
+
+---
+
+# Phase 8 — Suricata IDS
+
+Suricata was added to OPNsense later.
+
+Primary monitored interface:
+
+`em2`
+
+This corresponds to REDNET.
+
+ET Open rules were enabled.
+
+---
+
+# First Suricata Alert
+
+A controlled test generated:
+
+`SID 2100498`
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Category:
+
+`Potentially Bad Traffic`
+
+Severity:
+
+`2`
+
+This confirmed Suricata itself was working.
+
+---
+
+# Initial Wazuh Suricata Problem
+
+The first events reached Wazuh but did not decode correctly.
+
+They fell through to:
+
+`Rule 1002`
+
+This showed that:
+
+- transport worked
+- parsing did not
+
+The problem moved from networking into decoder troubleshooting.
+
+---
+
+# Custom Decoder Experimentation
+
+A custom decoder was introduced.
+
+One observed decoder name was:
+
+`suricata-eve-syslog`
+
+This helped confirm message structure.
+
+However, the custom wrapper was later retired.
+
+---
+
+# Transition to JSON
+
+The architecture was simplified around structured JSON.
+
+The effective decoder became:
+
+`json`
+
+Wazuh's built-in Suricata rules could then process the events.
+
+---
+
+# Suricata Rule 86601
+
+Built-in rule:
+
+`86601`
+
+Description:
+
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
+
+This confirmed correct end-to-end processing.
+
+---
+
+# Dedicated Suricata Transport
+
+A dedicated syslog port was configured:
+
+`UDP/5514`
+
+Destination:
+
+`LAB-SIEM-01`
+
+rsyslog was configured using:
+
+`/etc/rsyslog.d/30-suricata-remote.conf`
+
+---
+
+# Suricata Log File
+
+Events were written to:
+
+`/var/log/suricata/eve.json`
+
+Directory ownership:
+
+`syslog:wazuh`
+
+Permissions:
+
+`750`
+
+Wazuh monitored the file using JSON format.
+
+---
+
+# rsyslog Listener Validation
+
+The SIEM was verified listening on:
+
+`0.0.0.0:5514`
+
+and:
+
+`[::]:5514`
+
+This validated the transport layer.
+
+---
+
+# Final Suricata Pipeline
+
+The final path became:
+
+    LAB-FW-01
+      Suricata
+         |
+         v
+    Remote Logging
+         |
+       UDP/5514
+         |
+         v
+    LAB-SIEM-01
+         |
+         v
+      rsyslog
+         |
+         v
+    /var/log/suricata/eve.json
+         |
+         v
+    Wazuh Logcollector
+         |
+         v
+       JSON Decoder
+         |
+         v
+      Rule 86601
+
+---
+
+# Suricata Troubleshooting Lessons
+
+Several lessons came from this phase.
+
+## Arrival Does Not Equal Decoding
+
+Rule 1002 proved the event could arrive without being parsed properly.
+
+## JSON Was Cleaner
+
+Structured parsing reduced custom complexity.
+
+## Built-In Rules Were Preferable
+
+Custom decoder logic was retired when built-in support worked.
+
+## Live jq Errors Did Not Mean Pipeline Failure
+
+Direct `jq` parsing on an actively written file occasionally errored, but valid alerts continued.
+
+## full_log Could Be Null
+
+A Wazuh event could still be valid even when:
+
+`full_log: null`
+
+Structured fields remained available.
+
+---
+
+# Phase 9 — SIEM Storage Recovery
+
+At one point, `LAB-SIEM-01` experienced a storage-related problem.
+
+The VM was recovered successfully.
+
+The main logical volume was:
+
+`/dev/mapper/ubuntu--vg-ubuntu--lv`
+
+A healthy state showed approximately:
+
+    53G total
+    21G used
+    30G free
+
+Later final validation showed:
+
+    53G total
+    25G used
+    26G available
+    49% used
+
+---
+
+# SIEM Recovery Validation
+
+After recovery:
+
+- LVM was active
+- the system booted normally
+- no failed systemd services remained
+- Wazuh services were healthy
+
+The recovered live system became authoritative.
+
+---
+
+# Important Snapshot Decision
+
+An older SIEM snapshot existed.
+
+The decision was made:
+
+**Do not restore it.**
+
+Restoring it would have risked losing newer:
+
+- Wazuh configuration
+- detections
+- Suricata integration
+- agent onboarding
+
+The live recovered state was retained.
+
+---
+
+# Phase 10 — Active Directory Planning
+
+Once the original four-zone architecture and monitoring stack were stable, the next major goal was centralized identity.
+
+A dedicated identity zone was planned instead of placing the Domain Controller inside CORPNET.
+
+This became:
+
+`ADNET`
+
+---
+
+# ADNET
+
+Network:
+
+`10.10.50.0/24`
+
+Gateway:
+
+`10.10.50.1`
+
+Domain Controller:
+
+`LAB-DC-01 — 10.10.50.10`
+
+---
+
+# Windows Server Deployment
+
+`LAB-DC-01`
+
+was deployed using:
+
+`Windows Server 2025 Standard Evaluation`
+
+A static address was assigned.
+
+The server was prepared for Active Directory Domain Services.
+
+---
+
+# Active Directory Deployment
+
+The server was promoted to Domain Controller.
+
+Domain:
+
+`cyberlab.internal`
+
+NetBIOS:
+
+`CYBERLAB`
+
+The environment included:
+
+- AD DS
+- DNS
+- Global Catalog
+- Kerberos
+- LDAP
+
+---
+
+# AD Health Validation
+
+Validation included:
+
+    whoami
+
+Result:
+
+`cyberlab\administrator`
+
+and:
+
+    nltest /dsgetdc:cyberlab.internal
+
+which succeeded.
+
+SYSVOL and NETLOGON were available.
+
+---
+
+# dcdiag Validation
+
+Targeted health checks included:
+
+    dcdiag /test:Advertising /test:SysVolCheck /test:NetLogons /test:Services /q
+
+No output was returned.
+
+DNS validation also passed.
+
+---
+
+# Active Directory OU Structure
+
+A structured hierarchy was created under:
+
+`CyberLab`
+
+OUs included:
+
+- Admins
+- Users
+- Groups
+- Service Accounts
+- Servers
+- Workstations
+
+This supported cleaner identity organization and Group Policy targeting.
+
+---
+
+# Active Directory Groups
+
+Role-based groups included:
+
+- GG_Employees
+- GG_Helpdesk
+- GG_IT_Admins
+- GG_SOC_Analysts
+- GG_Domain_Admins
+
+`GG_Domain_Admins`
+
+was treated as a classification group rather than the built-in privileged group.
+
+---
+
+# Standard User Account
+
+Account:
+
+`emmanuel.patrick@cyberlab.internal`
+
+Membership included:
+
+- Domain Users
+- GG_Employees
+- GG_SOC_Analysts
+
+---
+
+# Privileged Account
+
+Account:
+
+`emmanuel.ngari-adm@cyberlab.internal`
+
+Membership included:
+
+- Domain Users
+- GG_IT_Admins
+- GG_Domain_Admins
+- Domain Admins
+
+This created separation between normal and privileged activity.
+
+---
+
+# Active Directory Firewall Rules
+
+CORPNET was given access to required domain services.
+
+Important TCP services included:
+
+- 53
+- 88
+- 135
+- 389
+- 445
+- 464
+- 3268
+- 49152:65535
+
+Important UDP services included:
+
+- 53
+- 88
+- 123
+- 389
+- 464
+
+The design avoided a broad:
+
+`CORPNET → ADNET Any`
+
+rule.
+
+---
+
+# Active Directory Connectivity Testing
+
+From `LAB-WIN-01`:
+
+DNS:
+
+    Test-NetConnection 10.10.50.10 -Port 53
+
+PASS.
+
+Kerberos:
+
+    Test-NetConnection 10.10.50.10 -Port 88
+
+PASS.
+
+LDAP:
+
+    Test-NetConnection 10.10.50.10 -Port 389
+
+PASS.
+
+---
+
+# Workstation Domain Join
+
+`LAB-WIN-01`
+
+successfully joined:
+
+`cyberlab.internal`
+
+This converted the endpoint from standalone Windows into a managed domain workstation.
+
+---
+
+# Group Policy
+
+A workstation baseline was created:
+
+`GPO-Workstation-Security-Baseline`
+
+Linked to:
+
+`CyberLab\Workstations`
+
+---
+
+# GPO Security Settings
+
+The baseline included:
+
+- Windows Firewall enabled
+- inbound block
+- outbound allow
+- Logon Success/Failure
+- Process Creation Success
+- Special Logon Success
+- command-line process capture
+- PowerShell Script Block Logging
+- PowerShell Module Logging
+
+Module logging scope:
+
+`*`
+
+---
+
+# Group Policy Validation
+
+The GPO successfully applied to:
+
+`LAB-WIN-01`
+
+This validated:
+
+- domain membership
+- OU placement
+- Group Policy processing
+
+---
+
+# Domain Controller Wazuh Onboarding
+
+`LAB-DC-01`
+
+was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+
+Status:
+
+`Active`
+
+---
+
+# Domain Controller Auditing
+
+Important observed events included:
+
+- 4672
+- 4719
+- 5136
+
+These provided visibility into:
+
+- privileged logons
+- audit policy changes
+- Active Directory object changes
+
+---
+
+# Domain Controller Sysmon
+
+Sysmon was installed on:
+
+`LAB-DC-01`
+
+Version:
+
+`15.22`
+
+Binary:
+
+`C:\Tools\Sysmon\Sysmon64.exe`
+
+Configuration:
+
+`sysmon-dc.xml`
+
+---
+
+# Sysmon Tuning
+
+The Domain Controller configuration was tuned to focus on high-value executables.
+
+Examples included:
+
+- powershell
+- pwsh
+- cmd
+- rundll32
+- regsvr32
+- mshta
+- certutil
+- bitsadmin
+- wscript
+- cscript
+- schtasks
+- nltest
+- ntdsutil
+- whoami
+- net
+- net1
+
+DNS monitoring was also tuned.
+
+This reduced unnecessary SIEM noise.
+
+---
+
+# AD Isolation Validation
+
+REDNET → ADNET LDAP/389:
+
+Blocked.
+
+ADNET → DMZ SSH/22:
+
+Blocked.
+
+This confirmed the identity infrastructure was not broadly exposed.
+
+---
+
+# Phase 11 — DMZ Planning
+
+After:
 
 - OPNsense
-- Interface assignments
-- Security zones
-- Firewall aliases
-- Explicit allow rules
-- Explicit block rules
-- Stateful firewall behavior
-- Log analysis
-- Cross-zone troubleshooting
+- Wazuh
+- Suricata
+- Active Directory
+
+were already functioning, the final major architecture component was planned:
+
+a dedicated DMZ.
+
+The purpose was to create an intentionally exposed web server network without weakening internal segmentation.
+
+---
+
+# DMZ Network
+
+Network:
+
+`10.10.60.0/24`
+
+Gateway:
+
+`10.10.60.1`
+
+Server:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+---
+
+# OPNsense NIC 7
+
+The firewall needed an additional network adapter.
+
+NIC 7 was added while the VM was powered off.
+
+Configuration:
+
+    Mode: Internal Network
+    Network: DMZ-NET
+    Adapter: Intel PRO/1000 MT Desktop (82540EM)
+    Cable Connected: Yes
+
+OPNsense detected the interface as:
+
+`em6`
+
+It was assigned as:
+
+`DMZ`
+
+---
+
+# DMZ Server Deployment
+
+A new VM was created using:
+
+`Ubuntu Server 26.04.1 LTS`
+
+Resources:
+
+    RAM: 2 GB
+    CPUs: 2
+    Disk: 25 GB dynamically allocated VDI
+
+LVM was used.
+
+The root logical volume was manually expanded to approximately:
+
+`20G`
+
+---
+
+# DMZ Static Addressing
+
+Final configuration:
+
+    Hostname: lab-dmz-01
+    IP: 10.10.60.10
+    Prefix: /24
+    Gateway: 10.10.60.1
+    DNS: 10.10.60.1
+
+Interface:
+
+`enp0s3`
+
+---
+
+# DMZ Firewall Policy
+
+The final DMZ rule order became:
+
+    1. ALLOW - DMZ to OPNsense DNS
+    2. ALLOW - DMZ to OPNsense NTP
+    3. ALLOW - DMZ to Wazuh Agent Services
+    4. BLOCK - DMZ to Unauthorized Private Networks
+    5. ALLOW - DMZ HTTP HTTPS Outbound
+
+---
+
+# DMZ Wazuh Connectivity
+
+Before installing the agent, ports were tested:
+
+    nc -zv -w 3 10.10.40.10 1514
+    nc -zv -w 3 10.10.40.10 1515
+
+Both succeeded.
+
+This confirmed network policy before software deployment.
+
+---
+
+# DMZ Internal Isolation
+
+DMZ → CORPNET SMB/445:
+
+Blocked.
+
+DMZ → ADNET LDAP/389:
+
+Blocked.
+
+This validated the broad private-network deny policy.
+
+---
+
+# DMZ Internet Validation
+
+A test to:
+
+`https://packages.wazuh.com`
+
+returned:
+
+`HTTP/2 403`
+
+This was correctly interpreted as:
+
+- DNS success
+- TCP success
+- TLS success
+- application response
+
+Therefore:
+
+**Network connectivity passed.**
+
+---
+
+# Nginx Deployment
+
+Nginx was installed.
+
+Observed version:
+
+`1.28.3 (Ubuntu)`
+
+Service:
+
+`Active`
+
+Port:
+
+`TCP/80`
+
+This became the intentional REDNET attack surface.
+
+---
+
+# REDNET to DMZ HTTP Rule
+
+A specific rule was created:
+
+`ALLOW - REDNET to LAB-DMZ-01 HTTP`
+
+This rule was placed above the broad REDNET private-network block.
+
+---
+
+# Apply Changes Incident
+
+The rule was:
+
+- correct
+- saved
+- correctly ordered
+
+but traffic still failed.
+
+OPNsense Live View showed the packet still matching the broad deny.
+
+The actual problem:
+
+**The firewall changes had not been applied.**
+
+The red Apply button was still visible.
+
+After applying the configuration:
+
+HTTP succeeded.
+
+This became one of the most important operational lessons in the lab.
+
+---
+
+# REDNET to DMZ HTTP Validation
+
+From Kali:
+
+`HTTP/80`
+
+Result:
+
+`200`
+
+PASS.
+
+---
+
+# REDNET to DMZ SSH Validation
+
+Kali attempted:
+
+`TCP/22`
+
+Result:
+
+Timed out.
+
+OPNsense confirmed the broad REDNET block.
+
+PASS.
+
+---
+
+# Restricted DMZ Administration
+
+A management path was needed.
+
+Initial CORPNET → DMZ SSH failed as expected.
+
+A narrow firewall rule was created:
+
+`ALLOW - ADMIN_WORKSTATION to LAB-DMZ-01 SSH`
+
+Source:
+
+`LAB-WIN-01 — 10.10.20.20`
+
+Destination:
+
+`LAB-DMZ-01 — 10.10.60.10`
+
+Port:
+
+`TCP/22`
+
+The rule was placed above the broad CORPNET private-network deny.
+
+SSH then succeeded.
+
+---
+
+# Why the Domain Controller Was Not Used
+
+Using `LAB-DC-01` as a jump host was considered and rejected.
+
+The Domain Controller was kept out of routine DMZ administration.
+
+Final ADNET → DMZ SSH test:
+
+Blocked.
+
+This preserved identity isolation.
+
+---
+
+# SSH Hardening
+
+An Ed25519 key was generated on:
+
+`LAB-WIN-01`
+
+The public key was installed for the Ubuntu user:
+
+`emmanuel`
+
+Final effective SSH settings:
+
+    PermitRootLogin no
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+
+Override file:
+
+`/etc/ssh/sshd_config.d/00-dmz-hardening.conf`
+
+---
+
+# SSH Validation
+
+Key-based login from `LAB-WIN-01`:
+
+PASS.
+
+Password-only login:
+
+`Permission denied (publickey).`
+
+PASS.
+
+---
+
+# Wazuh Agent on DMZ
+
+Agent version:
+
+`4.14.7-1`
+
+Manager:
+
+`10.10.40.10`
+
+Agent name:
+
+`LAB-DMZ-01`
+
+Final agent:
+
+    ID: 004
+    Name: LAB-DMZ-01
+    Status: Active
+
+---
+
+# Nginx Wazuh Integration
+
+Wazuh monitored:
+
+`/var/log/nginx/access.log`
+
+using:
+
+`apache`
+
+and:
+
+`/var/log/nginx/error.log`
+
+using:
+
+`syslog`
+
+---
+
+# Nginx Detection Validation
+
+Kali requested:
+
+`/wazuh-nginx-verify-01`
+
+Nginx returned:
+
+`404`
+
+Wazuh generated:
+
+`Rule 31101`
+
+Description:
+
+`Web server 400 error code.`
+
+Source IP:
+
+`10.10.10.10`
+
+PASS.
+
+---
+
+# Final Suricata DMZ Validation
+
+A temporary file was created:
+
+`/var/www/html/suricata-test.txt`
+
+Content:
+
+    uid=0(root) gid=0(root) groups=0(root)
+
+Kali requested it.
+
+Suricata generated:
+
+`SID 2100498`
+
+with:
+
+    Source: 10.10.60.10:80
+    Destination: 10.10.10.10
+    Direction: to_client
+
+Wazuh generated:
+
+`Rule 86601`
+
+PASS.
+
+The test file was then removed.
+
+---
+
+# DMZ Updates
+
+The server was updated using:
+
+`apt update`
+
+and:
+
+`apt upgrade -y`
+
+Approximately:
+
+`23 packages`
+
+were upgraded.
+
+Afterward:
+
+- SSH active
+- Nginx active
+- Wazuh agent active
+
+No reboot was required.
+
+---
+
+# Why apt autoremove Was Avoided
+
+The system was already stable.
+
+Old packages or kernels were not removed simply for cosmetic cleanup.
+
+The lab followed the principle:
+
+**Do not introduce unnecessary change immediately before final validation.**
+
+---
+
+# Phase 12 — Final Six-Zone Validation
+
+At this stage, the final architecture contained:
+
+- REDNET
+- CORPNET
+- SERVERNET
+- SOCNET
+- ADNET
+- DMZ
+
+A full service-level validation was performed.
+
+---
+
+# REDNET Final Validation
+
+REDNET → DMZ HTTP/80:
+
+ALLOW — PASS.
+
+REDNET → DMZ SSH/22:
+
+BLOCK — PASS.
+
+REDNET → CORPNET SMB/445:
+
+BLOCK — PASS.
+
+REDNET → ADNET LDAP/389:
+
+BLOCK — PASS.
+
+---
+
+# CORPNET Final Validation
+
+CORPNET → ADNET DNS/53:
+
+PASS.
+
+CORPNET → ADNET Kerberos/88:
+
+PASS.
+
+CORPNET → ADNET LDAP/389:
+
+PASS.
+
+CORPNET → SOCNET Wazuh/1514:
+
+PASS.
+
+LAB-WIN-01 → DMZ SSH/22:
+
+PASS.
+
+---
+
+# SERVERNET Final Validation
+
+SERVERNET → SOCNET Wazuh/1514:
+
+PASS.
+
+SERVERNET → CORPNET SMB/445:
+
+BLOCK — PASS.
+
+SERVERNET → DMZ SSH/22:
+
+BLOCK — PASS.
+
+---
+
+# ADNET Final Validation
+
+ADNET → SOCNET Wazuh/1514:
+
+PASS.
+
+ADNET → DMZ SSH/22:
+
+BLOCK — PASS.
+
+Domain Controller health:
+
+PASS.
+
+---
+
+# DMZ Final Validation
+
+DMZ → SOCNET Wazuh/1514:
+
+PASS.
+
+DMZ → CORPNET SMB/445:
+
+BLOCK — PASS.
+
+DMZ → ADNET LDAP/389:
+
+BLOCK — PASS.
+
+DMZ → Internet HTTPS/443:
+
+PASS.
+
+---
+
+# Wazuh Final Agent State
+
+Final agents:
+
+    ID 001 — LAB-WIN-01 — Active
+    ID 002 — LAB-UBUNTU-01 — Active
+    ID 003 — LAB-DC-01 — Active
+    ID 004 — LAB-DMZ-01 — Active
+
+---
+
+# Wazuh Stack Final State
+
+Final services:
+
+- Wazuh Manager — Active
+- Wazuh Indexer — Active
+- Wazuh Dashboard — Active
+- Filebeat — Active
+
+Manager version:
+
+`v4.14.7`
+
+---
+
+# SIEM Storage Final State
+
+Final observed storage:
+
+    Filesystem:
+    /dev/mapper/ubuntu--vg-ubuntu--lv
+
+    Total:
+    53G
+
+    Used:
+    25G
+
+    Available:
+    26G
+
+    Usage:
+    49%
+
+This confirmed the SIEM remained healthy.
+
+---
+
+# Final Detection Coverage
+
+Validated detection capabilities included:
+
+- Linux user creation — Rule 100200
+- Linux user deletion — Rule 100201
+- OPNsense firewall correlation — Rule 87702
+- Suricata alert — Rule 86601
+- Nginx web event — Rule 31101
+- Windows endpoint telemetry
+- Domain Controller security telemetry
+- Sysmon
+- PowerShell
+- auditd
+- firewall logs
+
+---
+
+# Phase 13 — Final Shutdown and Cleanup
+
+Once validation completed, the VMs were shut down.
+
+A final shutdown issue occurred on `LAB-UBUNTU-01`.
+
+Shutdown was initially inhibited by:
+
+`unattended-upgrade-shutdown --wait-for-signal`
+
+Process inspection showed no active apt or dpkg package operation.
+
+The unattended-upgrades service was safely stopped.
+
+The server then powered off cleanly.
+
+---
+
+# Soft Lockup Messages
+
+Ubuntu also displayed soft-lockup-style messages during some shutdown activity.
+
+The VM remained responsive.
+
+The symptoms were treated as likely VirtualBox host CPU contention rather than immediate evidence of guest corruption.
+
+Unnecessary kernel changes were avoided.
+
+---
+
+# Snapshot Cleanup
+
+The project had accumulated multiple development snapshots.
+
+Once the lab passed complete six-zone validation, obsolete snapshots were deleted and merged.
+
+The goal was to keep one clean known-good baseline per VM.
+
+---
+
+# Final Snapshot Name
+
+Every VM now retains exactly one snapshot:
+
+`Final-Six-Zone-Validated-Baseline`
+
+---
+
+# Final Snapshot UUIDs
+
+## LAB-FW-01
+
+`d0821c00-02ab-47a9-8341-b6e31001b3b6`
+
+## LAB-KALI-01
+
+`dbb7b8d0-d519-48ef-9e57-7571b912ba92`
+
+## LAB-WIN-01
+
+`36d9a7bc-4556-4f14-9887-959d4a46e65c`
+
+## LAB-UBUNTU-01
+
+`23d97e1a-a95e-4dd9-8912-f48e312ccf74`
+
+## LAB-SIEM-01
+
+`4081e1d5-fcb7-4f40-ad2a-04a081c865ca`
+
+## LAB-DC-01
+
+`dd108acf-e11f-44f2-82f1-c3665d3f3691`
+
+## LAB-DMZ-01
+
+`ac27c1e7-c61f-41fd-ab11-b7e84883068c`
+
+---
+
+# Final Architecture
+
+The final environment is:
+
+    Internet
+       |
+       v
+    VirtualBox NAT
+       |
+       v
+    +----------------------+
+    |      LAB-FW-01       |
+    |       OPNsense       |
+    | Firewall / Routing   |
+    |    Suricata IDS      |
+    +----------------------+
+      |     |      |      |      |      |
+      v     v      v      v      v      v
+    RED   CORP   SERVER   SOC    AD     DMZ
+    NET    NET     NET     NET    NET    NET
+
+Primary systems:
+
+    LAB-KALI-01     10.10.10.10
+    LAB-WIN-01      10.10.20.20
+    LAB-UBUNTU-01   10.10.30.30
+    LAB-SIEM-01     10.10.40.10
+    LAB-DC-01       10.10.50.10
+    LAB-DMZ-01      10.10.60.10
+
+---
+
+# Final Security Architecture
+
+The final lab provides:
+
+## Network Security
+
+- OPNsense
+- six security zones
+- least-privilege firewall policy
+- logged deny rules
+- controlled Internet access
+
+## Endpoint Security
+
+- Sysmon
+- PowerShell logging
+- advanced Windows auditing
+- Defender
+- Windows Firewall telemetry
+- Linux auditd
+
+## Identity Security
+
+- Active Directory
+- Group Policy
+- privileged-account separation
+- ADNET isolation
+
+## Network Detection
+
+- Suricata
+- ET Open rules
+- Wazuh integration
+
+## Application Monitoring
+
+- Nginx access logs
+- Nginx error logs
 
 ## SIEM
 
 - Wazuh
-- Endpoint agents
-- Agent enrollment
-- Indexer
-- Dashboard
-- Manager
-- Filebeat
-- Security Configuration Assessment
-- Vulnerability information
-- Endpoint inventory
-
-## Troubleshooting
-
-- DNS failures
-- Firewall rule mismatch
-- Package signing issues
-- Repository problems
-- Typing errors
-- TCP connectivity issues
-- VirtualBox disk exhaustion
-- OpenSearch startup problems
-- Service dependency problems
-
-## Documentation
-
-- GitHub
-- Markdown
-- Architecture documentation
-- Firewall documentation
-- Change history
-- Technical journaling
+- endpoint agents
+- firewall logs
+- IDS alerts
+- custom detections
 
 ---
 
-# 77. Important Commands Learned
+# Major Engineering Lessons
 
-## Linux System Information
+## Start Simple, Then Segment
 
-    uname -a
+The original flat lab was useful for foundational learning.
 
-    free -h
+It was later replaced when it no longer matched the project goals.
 
-    lscpu
-
----
-
-## Linux Networking
-
-    ip addr
-
-    ip a
-
-    ip route
-
-    nmcli
-
-    ping <destination>
-
----
-
-## DNS Testing
-
-    resolvectl query <hostname>
-
-Example:
-
-    resolvectl query packages.wazuh.com
-
----
-
-## HTTP/HTTPS Testing
-
-    curl <URL>
-
-Force IPv4:
-
-    curl -4 <URL>
-
-Wazuh key test:
-
-    curl -4 -fsSL --max-time 30 https://packages.wazuh.com/key/GPG-KEY-WAZUH | head
-
----
-
-## TCP Testing with Netcat
-
-    nc -zv -w 5 <IP> <port>
-
-Examples:
-
-    nc -zv -w 5 10.10.40.10 1514
-
-    nc -zv -w 5 10.10.40.10 1515
-
----
-
-## PowerShell TCP Testing
-
-    Test-NetConnection <IP> -Port <port>
-
-Example:
-
-    Test-NetConnection 10.10.40.10 -Port 443
-
----
-
-## SSH
-
-    ssh <username>@<IP>
-
-Example:
-
-    ssh emmanuel@10.10.40.10
-
----
-
-## Linux Service Status
-
-    sudo systemctl status <service>
-
----
-
-## Check Whether Service Is Active
-
-    sudo systemctl is-active <service>
-
-Example:
-
-    sudo systemctl is-active wazuh-agent
-
----
-
-## Enable Service at Boot
-
-    sudo systemctl enable <service>
-
-Example:
-
-    sudo systemctl enable wazuh-agent
-
----
-
-## Start Service
-
-    sudo systemctl start <service>
-
-Example:
-
-    sudo systemctl start wazuh-agent
-
----
-
-## Reload systemd
-
-    sudo systemctl daemon-reload
-
----
-
-## View Service Logs
-
-    sudo journalctl -u <service> -n 80 --no-pager
-
-Example:
-
-    sudo journalctl -u wazuh-indexer -n 80 --no-pager
-
----
-
-## Check Listening Ports
-
-    sudo ss -lntp
-
-Specific port:
-
-    sudo ss -lntp | grep ':9200'
-
----
-
-## View Application Log
-
-    sudo tail -n 100 /var/log/wazuh-indexer/wazuh-cluster.log
-
----
-
-## Inspect systemd Unit
-
-    systemctl cat wazuh-indexer
-
----
-
-## Inspect systemd Properties
-
-    systemctl show wazuh-indexer -p TimeoutStartUSec -p TimeoutStopUSec
-
----
-
-## Verify GPG Key
-
-    gpg --show-keys /usr/share/keyrings/wazuh.gpg
-
----
-
-## Refresh APT Using IPv4
-
-    sudo apt-get -o Acquire::ForceIPv4=true update
-
----
-
-## Linux Shutdown
-
-    sudo poweroff
-
----
-
-## Windows Wazuh Service
-
-Check:
-
-    Get-Service WazuhSvc
-
-Start:
-
-    Start-Service WazuhSvc
-
----
-
-# 78. Important Wazuh Commands Used
-
-Wazuh all-in-one installation:
-
-    sudo bash ./wazuh-install.sh -a
-
-Ubuntu Wazuh Agent installation:
-
-    sudo env WAZUH_MANAGER="10.10.40.10" WAZUH_REGISTRATION_SERVER="10.10.40.10" WAZUH_AGENT_NAME="LAB-UBUNTU-01" apt-get install -y wazuh-agent
-
-Enable agent:
-
-    sudo systemctl enable wazuh-agent
-
-Start agent:
-
-    sudo systemctl start wazuh-agent
-
-Check agent:
-
-    sudo systemctl is-active wazuh-agent
-
-Check indexer:
-
-    sudo systemctl status wazuh-indexer --no-pager -l
-
-Check dashboard:
-
-    sudo systemctl status wazuh-dashboard --no-pager -l
-
-Check OpenSearch TCP 9200:
-
-    sudo ss -lntp | grep ':9200'
-
-Inspect indexer logs:
-
-    sudo journalctl -u wazuh-indexer -n 80 --no-pager
-
-Inspect Wazuh cluster log:
-
-    sudo tail -n 100 /var/log/wazuh-indexer/wazuh-cluster.log
-
----
-
-# 79. Important Troubleshooting Principles Learned
-
-## Do Not Guess
-
-When something fails:
-
-1. Reproduce the problem
-2. Inspect logs
-3. Verify networking
-4. Check configuration
-5. Make one controlled change
-6. Test again
-
----
-
-## Use Firewall Logs
-
-The SERVERNET → SOCNET Wazuh issue showed that firewall logs can identify exactly which rule is blocking traffic.
-
-Do not simply add broad allow rules.
-
----
-
-## Verify Downloaded Keys
-
-A command completing does not automatically mean a valid signing key was received.
-
-The downloaded content should be inspected and the imported key verified.
-
----
-
-## Check Paths Carefully
-
-Small typing errors such as:
-
-`keystrings`
-
-instead of:
-
-`keyrings`
-
-can break an entire package installation process.
-
----
-
-## Avoid Destructive Recovery Without Evidence
-
-During the Wazuh Indexer incident, no data directories, indexes or lock files were deleted because there was no proof that they were corrupt.
-
----
-
-## Clean Restart Before Deep Repair
-
-The Wazuh Indexer ultimately recovered after a clean shutdown and restart.
-
-A restart should not always be the first troubleshooting step, but once logs and state were understood, it was a safe diagnostic action.
-
----
-
-# 80. Storage Management Lesson
-
-The host disk-full incident demonstrated that virtualization requires substantial storage planning.
-
-A professional lab must account for:
-
-- VM disks
-- Snapshots
-- ISO files
-- Log growth
-- SIEM index growth
-- Downloads
-- Temporary files
-
-The physical host should maintain significant free space.
-
-The lab should avoid reaching zero free disk space again.
-
-Future storage management should include:
-
-- Removing duplicate ISOs safely
-- Archiving unused installers
-- Monitoring disk usage
-- Reviewing snapshot growth
-- Avoiding unnecessary large downloads on the VM host
-- Never manually deleting active VirtualBox disk or snapshot files
-
----
-
-# 81. Snapshot Philosophy
-
-Snapshots should be taken before:
-
-- Major network changes
-- Firewall redesign
-- Security-agent installation
-- SIEM configuration
-- IDS/IPS installation
-- Active Directory changes
-- Major upgrades
-- Risky troubleshooting
-
-Snapshots should also be created after major milestones are verified.
-
-The working process is:
-
-**Snapshot → Change → Test → Verify → Document**
-
----
-
-# 82. Security Lessons Learned
-
-The lab has demonstrated several important security principles.
-
-## Segmentation
-
-Systems with different trust levels should not automatically share one flat network.
-
----
-
-## Least Privilege Networking
-
-Only required traffic should be allowed.
-
----
-
-## Default Deny
-
-Broad internal allow rules should be replaced with specific policies where possible.
-
----
-
-## Defense in Depth
-
-Security is being implemented through multiple layers:
-
-- Network segmentation
-- Firewall controls
-- Endpoint monitoring
-- SIEM
-- Future IDS/IPS
-- Future Active Directory monitoring
-
----
-
-## Logging Matters
-
-Logs are required to understand:
-
-- Why something was blocked
-- Why a service failed
-- Whether an attack occurred
-- Whether a security rule is working
-
----
-
-# 83. How I Can Explain the Lab in an Interview
-
-A concise explanation:
-
-I started my cybersecurity homelab with three VirtualBox machines: Kali Linux, Windows and Ubuntu Server on a shared internal network.
-
-After learning basic virtualization and networking, I redesigned the environment into a segmented enterprise-style architecture using OPNsense as the central firewall and router.
-
-I created separate security zones for offensive systems, corporate endpoints, servers and security monitoring.
-
-Kali is isolated inside REDNET, Windows is in CORPNET, Ubuntu is in SERVERNET, and a dedicated Wazuh SIEM server is located in SOCNET.
-
-All inter-zone traffic passes through OPNsense. I removed direct NAT access from the internal machines so routing and Internet access are controlled by the firewall.
-
-I created explicit firewall policies and aliases to restrict communication between zones while permitting required services.
-
-I then deployed Wazuh as an all-in-one SIEM solution and installed agents on both Windows and Ubuntu systems.
-
-The Windows endpoint sends telemetry from CORPNET to SOCNET, while the Ubuntu server sends telemetry from SERVERNET to SOCNET.
-
-During the project I troubleshot firewall rule matching, DNS problems, Linux package-signing keys, repository configuration, agent enrollment, VirtualBox disk exhaustion and a Wazuh Indexer startup problem.
-
-I use snapshots before major changes, verify each configuration with connectivity tests and logs, and document the environment in GitHub.
-
-The next stages of the project include Sysmon, enhanced Linux auditing, OPNsense log forwarding, Suricata IDS, Active Directory, a DMZ, vulnerable systems and complete attack-detection-response exercises.
-
----
-
-# 84. Current Project Status
-
-## Completed
-
-- VirtualBox installed
-- Kali deployed
-- Windows deployed
-- Ubuntu Server deployed
-- Basic networking learned
-- Original LAB-NET created
-- OPNsense deployed
-- REDNET created
-- CORPNET created
-- SERVERNET created
-- SOCNET created
-- Static addressing configured
-- Direct endpoint NAT removed
-- OPNsense routing configured
-- OPNsense outbound NAT working
-- Firewall aliases created
-- Firewall policies implemented
-- Cross-zone testing completed
-- GitHub repository created
-- Architecture documentation started
-- Firewall documentation created
-- LAB-SIEM-01 deployed
-- Wazuh 4.14.7 deployed
-- Windows Wazuh agent deployed
-- Ubuntu Wazuh agent deployed
-- Windows endpoint active in Wazuh
-- Ubuntu endpoint active in Wazuh
-- Wazuh dashboard reachable through OPNsense
-- Wazuh Indexer recovery completed
-- Recovery snapshots created
-
----
-
-# 85. Current Lab Maturity
-
-Current approximate maturity:
-
-## Virtualization Foundation
-
-Complete.
-
-## Network Segmentation
-
-Complete for current networks.
-
-## OPNsense Firewall
-
-Operational.
-
-## Offensive Workstation
-
-Operational.
-
-## Windows Endpoint
-
-Operational.
-
-## Ubuntu Server
-
-Operational.
-
-## SOC Network
-
-Operational.
-
-## Wazuh SIEM
-
-Operational.
-
-## Endpoint Monitoring
-
-Operational for Windows and Ubuntu.
-
-## IDS/IPS
-
-Not yet deployed.
-
-## Active Directory
-
-Not yet deployed.
-
-## DMZ
-
-Not yet deployed.
-
-## Vulnerable Targets
-
-Not yet deployed.
-
-## Attack Detection Exercises
-
-Not yet started.
-
-## Incident Response Exercises
-
-Not yet started.
-
----
-
-# 86. Planned Next Phase — Enhanced Endpoint Telemetry
-
-The next defensive phase should improve endpoint visibility.
-
-Planned Windows improvements include:
-
-- Sysmon
-- Enhanced Windows event collection
-- PowerShell logging
-- Process creation monitoring
-- Network connection telemetry
-- Wazuh integration
-- Detection validation
-
-Planned Linux improvements include:
-
-- auditd
-- Authentication monitoring
-- SSH monitoring
-- Privilege escalation monitoring
-- File integrity monitoring
-- Service monitoring
-
----
-
-# 87. Planned OPNsense Log Integration
-
-Future work will forward OPNsense logs to the SIEM.
-
-This will allow Wazuh to receive information about:
-
-- Firewall blocks
-- Allowed connections
-- Authentication activity
-- Network-policy violations
-- Possible reconnaissance
-- Attack traffic
-
-This will improve the SOC view of the network.
-
----
-
-# 88. Planned Suricata Deployment
-
-Suricata will later be added as the network intrusion detection platform.
-
-Planned goals:
-
-- IDS monitoring
-- Signature-based detection
-- Suspicious traffic alerts
-- Network attack detection
-- Wazuh alert integration
-
-Suricata should initially operate in IDS mode before considering IPS blocking.
-
----
-
-# 89. Planned Active Directory Environment
-
-A future network is reserved:
-
-`AD-NET`
-
-Network:
-
-`10.10.50.0/24`
-
-Planned components include:
-
-- Windows Server
-- Active Directory Domain Services
-- DNS
-- Domain Controller
-- Domain users
-- Group Policy
-- Windows client domain membership
-
-This environment will support both attack and defense exercises.
-
----
-
-# 90. Planned DMZ
-
-Future DMZ network:
-
-`10.10.60.0/24`
-
-Potential systems include:
-
-- Web servers
-- Vulnerable applications
-- Linux servers
-- Security training targets
-
-The DMZ will allow realistic external-facing service simulations.
-
----
-
-# 91. Planned Attack and Detection Exercises
-
-Once monitoring is mature, controlled attacks will be performed from Kali.
-
-Examples may include:
-
-- Port scanning
-- Failed login attempts
-- SSH brute-force simulations
-- Suspicious PowerShell
-- Credential attacks
-- Web attacks
-- Privilege escalation
-- Lateral movement
-- Active Directory attacks
-
-The goal will not simply be successful exploitation.
-
-Every exercise should include:
-
-1. Attack
-2. Detection
-3. Alert review
-4. Investigation
-5. Response
-6. Documentation
-
----
-
-# 92. Planned Incident Response Workflow
-
-Future incidents will follow a structured process.
-
-Example:
-
-1. Preparation
-2. Detection
-3. Triage
-4. Investigation
-5. Containment
-6. Eradication
-7. Recovery
-8. Lessons learned
-9. Documentation
-
-The lab will eventually be used to write realistic SOC incident reports.
-
----
-
-# 93. Professional Development Connection
-
-The homelab supports my broader cybersecurity learning path.
-
-Current certification roadmap includes:
-
-1. Google Cybersecurity Certificate — completed
-2. CCNA
-3. CompTIA Security+
-4. Microsoft SC-200
-5. OSCP+ later
-
-ISC2 CC is considered optional because of overlap with existing foundational training.
-
-The laboratory is intended to provide hands-on experience alongside certification study.
-
----
-
-# 94. Learning Roadmap
-
-The broader learning sequence is:
-
-Cybersecurity Fundamentals  
-↓  
-Networking Fundamentals  
-↓  
-Linux and Windows Administration  
-↓  
-Network Security  
-↓  
-SOC Operations  
-↓  
-Blue Team  
-↓  
-Incident Response and Threat Detection  
-↓  
-Offensive Security and Ethical Hacking  
-↓  
-Penetration Testing  
-↓  
-Advanced Red Team  
-↓  
-Advanced Cybersecurity Professional
-
----
-
-# 95. Rules for Continuing the Project
-
-Every future major change should follow:
-
-1. Understand the objective
-2. Take a snapshot where appropriate
-3. Make one controlled change
-4. Test the result
-5. Inspect logs if something fails
-6. Verify expected security behavior
-7. Create a stable snapshot after major milestones
-8. Update GitHub
-9. Update this journal
-
-Avoid randomly installing tools without understanding their role in the architecture.
-
----
-
-# 96. Documentation Security Rules
-
-The public repository must not contain:
-
-- Passwords
-- Private keys
-- Authentication tokens
-- Wazuh passwords
-- OPNsense backup XML
-- Sensitive certificates
-- Personal credentials
-- Secret configuration values
-
-Screenshots should be reviewed before uploading publicly.
-
----
-
-# 97. Major Lessons From the Project So Far
-
-The most important lessons include:
-
-1. Building the VM is only the beginning.
-2. Networking knowledge is essential for cybersecurity.
-3. Flat networks do not represent realistic security architecture.
-4. Firewalls should enforce trust boundaries.
-5. Security monitoring requires carefully designed communication paths.
-6. Logs are more useful than guessing.
-7. A successful installation does not guarantee a healthy service.
-8. DNS problems can appear like package-manager problems.
-9. Small configuration typos can cause major failures.
-10. Disk capacity is critical for virtualization and SIEM systems.
-11. Never make destructive recovery changes without evidence.
-12. Snapshots make experimentation much safer.
-13. Documentation is part of professional cybersecurity work.
-14. Troubleshooting is itself a cybersecurity skill.
-15. Testing both allowed and blocked traffic is necessary.
-16. A professional lab should simulate architecture, not just collect tools.
-17. Every attack exercise should eventually connect to detection and response.
-
----
-
-# 98. Current Known-Good State
-
-As of the latest verified milestone:
-
-OPNsense:
-
-`Operational`
-
-REDNET:
-
-`Operational`
-
-CORPNET:
-
-`Operational`
-
-SERVERNET:
-
-`Operational`
-
-SOCNET:
-
-`Operational`
-
-LAB-KALI-01:
-
-`Operational`
-
-LAB-WIN-01:
-
-`Operational`
-
-LAB-UBUNTU-01:
-
-`Operational`
-
-LAB-SIEM-01:
-
-`Operational`
-
-Wazuh Manager:
-
-`Operational`
-
-Wazuh Indexer:
-
-`Operational`
-
-Wazuh Dashboard:
-
-`Operational`
-
-Filebeat:
-
-`Operational`
-
-LAB-WIN-01 Wazuh Agent:
-
-`Active`
-
-LAB-UBUNTU-01 Wazuh Agent:
-
-`Active`
-
-Dashboard HTTPS access:
-
-`Verified`
-
-Windows → SOCNET monitoring path:
-
-`Verified`
-
-Ubuntu → SOCNET monitoring path:
-
-`Verified`
-
-Network segmentation:
-
-`Operational`
-
----
-
-# 99. Latest Verified Snapshot
-
-Current verified SIEM snapshot:
-
-`SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-This represents the current stable recovery point before continuing with additional defensive-security capabilities.
-
----
-
-# 100. Project Motto
-
-**Learn → Build → Break → Troubleshoot → Fix → Test → Document → Repeat**
-
-This journal will continue to grow as the cybersecurity homelab evolves into a complete offensive and defensive cyber range.
-
----
-
-# 101. Host Storage Emergency and Snapshot Sprawl
-
-During the Sysmon deployment phase, VirtualBox generated another host-storage error.
-
-VirtualBox reported:
-
-`VERR_DISK_FULL`
-
-and:
-
-`BLKCACHE_IOERR`
-
-The physical Windows host was checked using:
-
-    Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | Select-Object DeviceID,@{N='FreeGB';E={[math]::Round($_.FreeSpace/1GB,2)}},@{N='SizeGB';E={[math]::Round($_.Size/1GB,2)}}
-
-The host showed approximately:
-
-`0.1 GB free`
-
-on a roughly:
-
-`456.56 GB`
-
-C: drive.
-
-The virtual machines were not resumed until sufficient host storage was recovered.
-
-This reinforced an important virtualization lesson:
-
-A virtual machine may have free space inside its guest operating system while the physical host has no space available for the virtual disk to grow.
-
----
-
-# 102. Locating the Actual VirtualBox VM Directory
-
-The initial search of:
-
-`C:\Users\USER\VirtualBox VMs`
-
-returned no relevant large files.
-
-VirtualBox was queried directly for its configured machine directory.
-
-Command:
-
-    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" list systemproperties | Select-String "Default machine folder"
-
-Result:
-
-`C:\Users\USER\Desktop\CyberLab\VMs`
-
-This demonstrated the importance of verifying the hypervisor configuration instead of assuming the default storage path.
-
----
-
-# 103. VirtualBox Disk Investigation
-
-Large files inside the actual VM directory were inspected.
-
-A PowerShell recursive scan identified multiple large VirtualBox snapshot disks.
-
-Examples included snapshot VDI files approximately:
-
-- 38.69 GB
-- 31.07 GB
-- 29.46 GB
-- 23.74 GB
-- 13.46 GB
-- 9.63 GB
-- 7.47 GB
-- 7.33 GB
-- 6.13 GB
-
-Several `.sav` snapshot-memory files were also present.
-
-This confirmed that the host-storage issue was partly caused by long VirtualBox snapshot chains.
-
-No `.vdi`, `.sav`, `.vbox`, or snapshot files were manually deleted.
-
----
-
-# 104. Emergency Non-VM Storage Recovery
-
-Before attempting snapshot consolidation, additional space was recovered outside the active VM directories.
-
-Large non-VM files were inspected.
-
-An old FIFA installation/download consumed significant space and was removed because it was no longer required.
-
-Additional duplicate Ubuntu installation media were also removed.
-
-The host recovered from approximately:
-
-`0 GB free`
-
-to tens of gigabytes of available storage.
-
-This created enough working space for safe VirtualBox snapshot consolidation.
-
----
-
-# 105. Safe VM Shutdown Before Snapshot Consolidation
-
-Virtual machines that had been paused because of the disk-full condition were resumed one at a time and shut down cleanly.
-
-Linux systems were shut down using:
-
-    sudo poweroff
-
-Windows was shut down normally from the operating system.
-
-The objective was to reach:
-
-`Powered Off`
-
-state before managing snapshot chains.
-
-This reduced the risk of filesystem corruption and avoided creating additional saved-memory snapshot files.
-
----
-
-# 106. Windows Snapshot Consolidation
-
-The Windows snapshot tree was inspected using:
-
-    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-WIN-01" list --details
-
-The chain contained several snapshots from the original NAT/LAB-NET architecture.
-
-Obsolete snapshots included:
-
-- `SNAP-00-WIN11-CLEAN-VM`
-- `SNAP-01-WIN11-LAB-NET`
-- `SNAP-02-WIN-NETWORK-BASELINE`
-- `Windows - CORPNET Policy Verified Pre Final Cutover`
-
-These were superseded by later verified states.
-
-Snapshots were deleted through VirtualBox one at a time using:
-
-    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-WIN-01" delete "<SNAPSHOT-UUID>"
-
-VirtualBox merged the differencing disks safely.
-
-Important retained milestones included:
-
-- `CORPNET Final Cutover Verified`
-- `Windows - Wazuh Agent Active`
-- `Windows - Pre Sysmon Deployment`
-
-Host free space increased significantly during the cleanup.
-
----
-
-# 107. Ubuntu Snapshot Consolidation
-
-The Ubuntu snapshot tree was inspected using:
-
-    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-UBUNTU-01" list --details
-
-Older snapshots from the original LAB-NET and migration stages were consolidated.
-
-Removed obsolete milestones included:
-
-- `Ubuntu - Base Installation + Network Configuration`
-- `Ubuntu - Pre OPNsense SERVERNET Migration`
-- `Ubuntu - SERVERNET Policy Verified Pre Final Cutover`
-
-Important retained milestones included:
-
-- `Ubuntu - SERVERNET Final Cutover Verified`
-- `Ubuntu - Pre Wazuh Agent`
-
-The snapshot cleanup was performed one snapshot at a time with disk-space checks between operations.
-
----
-
-# 108. Kali Snapshot Consolidation
-
-The Kali snapshot tree was inspected using:
-
-    & "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" snapshot "LAB-KALI-01" list --details
-
-Old NAT/LAB-NET snapshots included:
-
-- `SNAP-00-FRESH-KALI`
-- `SNAP-01-KALI-BASELINE`
-- `SNAP-02-KALI-NETWORK-BASELINE`
-- `Kali - Pre OPNsense REDNET Migration`
-- `Kali - REDNET Policy Verified Pre Final Cutover`
-
-These snapshots were consolidated through VirtualBox.
-
-The meaningful current milestone retained was:
-
-`REDNET Final Cutover Verified`
-
----
-
-# 109. SIEM Snapshot Consolidation
-
-The SIEM snapshot tree included:
-
-- `LAB-SIEM-01 - Base OS + SOCNET Verified`
-- `LAB-SIEM-01 - Wazuh 4.14.7 Operational`
-- `LAB-SIEM-01 - Wazuh + Windows Agent Verified`
-- `SIEM - Pre Indexer Timeout Recovery`
-- `SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-The temporary recovery checkpoint:
-
-`SIEM - Pre Indexer Timeout Recovery`
-
-was removed after the indexer recovery had been fully verified.
-
-The later known-good state:
-
-`SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-was retained.
-
----
-
-# 110. OPNsense Snapshot Consolidation
-
-The OPNsense snapshot tree contained several milestones from the original three-zone architecture.
-
-Older snapshots included:
-
-- `OPNsense - Base Install + Security Zones`
-- `OPNsense - Security Policy Baseline`
-- `Three Zone Policy Verified`
-- `Full Three Zone Cutover Verified`
-- `OPNsense - Explicit Three Zone Policy Verified`
-
-These were superseded by later architecture milestones and were consolidated.
-
-Important retained checkpoints included:
-
-- `OPNsense - Pre SOC-NET Expansion`
-- `OPNsense - SOCNET Interface + Policy Baseline`
-
-This preserves both:
-
-1. A known-good three-zone architecture
-2. The current SOCNET-enabled architecture
-
----
-
-# 111. Snapshot Cleanup Result
-
-After consolidating obsolete snapshots across:
-
-- LAB-WIN-01
-- LAB-UBUNTU-01
-- LAB-KALI-01
-- LAB-SIEM-01
-- LAB-FW-01
-
-the physical host recovered to approximately:
-
-`100 GB free`
-
-Further cleanup of old non-lab installation media increased available storage to approximately:
-
-`113.95 GB free`
-
-This was a major improvement compared with the earlier:
-
-`0 GB free`
-
-condition.
-
----
-
-# 112. Revised Snapshot Policy
-
-The following snapshot policy was adopted after the storage incident.
-
-## Keep Only Meaningful Milestones
-
-Examples:
-
-- Final network cutover
-- SIEM verified
-- Agent integration verified
-- Pre-major security deployment
-- Post-major security deployment
-
-## Avoid Snapshot Chains for Every Small Change
-
-Snapshots should not replace normal documentation.
-
-## Prefer Powered-Off Snapshots
-
-Powered-off snapshots avoid storing several gigabytes of VM memory in `.sav` files.
-
-## Consolidate Obsolete Checkpoints
-
-Once a newer configuration has been tested and verified, older temporary checkpoints should be reviewed.
-
-## Monitor Host Storage
-
-The physical host should maintain substantial free space.
-
-A practical warning threshold for this lab is approximately:
-
-`75–90 GB free`
-
-If available storage approaches this range while new snapshots or SIEM data are being added, storage should be reviewed before continuing.
-
-## Never Manually Delete VirtualBox Snapshot Files
-
-Files such as:
-
-- `.vdi`
-- `.sav`
-- `.vbox`
-- files under `Snapshots`
-
-must not be manually removed.
-
-Snapshot deletion and consolidation must be performed through VirtualBox.
-
----
-
-# 113. Old Lab Media Cleanup
-
-The physical host also contained installation media from an older unused SOC laboratory.
-
-The old directory contained approximately:
-
-- Ubuntu 24.04.3 Desktop ISO — 5.91 GB
-- Windows 10 Enterprise Evaluation ISO — 5.17 GB
-
-These files were not used by the current CyberLab architecture.
-
-After confirming that the current lab instead uses Windows 11 Enterprise and Ubuntu Server 26.04.1 media under the CyberLab directory, the unused older ISOs were removed.
-
-This recovered approximately:
-
-`11 GB`
-
-of additional host storage.
-
----
-
-# 114. Windows Host Storage Analysis
-
-Windows Storage Settings showed the major C: drive categories.
-
-Approximate values included:
-
-- Desktop — about 199 GB
-- Installed apps — about 68 GB
-- System & reserved — about 63 GB
-- Documents — about 11 GB
-- Temporary files — about 11 GB
-
-A significant part of Desktop storage belongs to:
-
-`C:\Users\USER\Desktop\CyberLab`
-
-and therefore should not be cleaned blindly.
-
----
-
-# 115. System and Reserved Storage
-
-Windows reported approximately:
-
-## System files
-
-`23.2 GB`
-
-## Reserved storage
-
-`6.50 GB`
-
-## Virtual memory
-
-`27.0 GB`
-
-## Hibernation file
-
-`6.24 GB`
-
-Because the physical host has approximately 16 GB RAM and regularly runs multiple virtual machines, the 27 GB virtual-memory allocation was left unchanged.
-
-The hibernation file was also retained because Windows Hibernate is regularly used.
-
-This demonstrated that not all large system files should be removed simply to recover disk capacity.
-
 ---
-
-# 116. Sysmon Deployment Begins
-
-After the host-storage problem was corrected, the Windows telemetry phase resumed.
-
-A powered-off snapshot already existed:
-
-`Windows - Pre Sysmon Deployment`
-
-Sysmon was downloaded from Microsoft Sysinternals using:
-
-    Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
 
-The archive was extracted to:
+## Test the Required Service
 
-`C:\Tools\Sysmon`
+Ping alone is not enough.
 
-using:
+Use:
 
-    New-Item -ItemType Directory -Path "C:\Tools\Sysmon" -Force | Out-Null; Expand-Archive -Path "$env:TEMP\Sysmon.zip" -DestinationPath "C:\Tools\Sysmon" -Force
+- TCP port tests
+- real application requests
+- actual service validation
 
-Files included:
-
-- `Sysmon.exe`
-- `Sysmon64.exe`
-- `Sysmon64a.exe`
-- `Eula.txt`
-
 ---
-
-# 117. Sysmon Authenticity Verification
-
-Before execution, the Sysmon64 binary was digitally verified.
-
-Command:
-
-    Get-AuthenticodeSignature "C:\Tools\Sysmon\Sysmon64.exe" | Select-Object Status,@{N='Signer';E={$_.SignerCertificate.Subject}}
-
-Result:
-
-`Valid`
 
-Signer:
+## Rule Order Matters
 
-`Microsoft Windows Publisher`
+Specific firewall allows must appear before broader denies.
 
-Publisher:
-
-`Microsoft Corporation`
-
-This confirmed the binary had a valid Microsoft signature.
-
 ---
-
-# 118. Sysmon Configuration
-
-A detection-focused Sysmon configuration was downloaded from the SwiftOnSecurity project.
-
-Command:
-
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "C:\Tools\Sysmon\sysmonconfig.xml"
-
-The file was inspected:
 
-    Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -TotalCount 20
+## Save Is Not Apply
 
-The XML was then parsed:
+In OPNsense, saving a rule does not guarantee the running ruleset has changed.
 
-    [xml]$cfg = Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -Raw; $cfg.Sysmon.schemaversion
+Always:
 
-Result:
+- save
+- apply
+- verify pending changes disappear
+- generate fresh traffic
 
-`4.50`
-
-This confirmed that the downloaded configuration was valid XML.
-
 ---
-
-# 119. Sysmon Installation
-
-Sysmon was installed using:
 
-    & "C:\Tools\Sysmon\Sysmon64.exe" -accepteula -i "C:\Tools\Sysmon\sysmonconfig.xml"
+## Telemetry Comes Before Detection
 
-Installation output confirmed:
+Before writing a Wazuh rule:
 
-- Sysmon version 15.22
-- Configuration validated
-- Sysmon64 installed
-- SysmonDrv installed
-- SysmonDrv started
-- Sysmon64 started
+- confirm the raw event exists
+- confirm ingestion
+- confirm decoder output
 
-The service was checked:
+Then build the detection.
 
-    Get-Service Sysmon64
-
-Result:
-
-`Running`
-
 ---
-
-# 120. Sysmon Event Verification
 
-The Sysmon Operational event channel was queried:
+## Historical Logs Can Mislead
 
-    Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5 | Select-Object TimeCreated,Id,ProviderName
+Old connection errors do not automatically represent current state.
 
-Recent events included:
+Always correlate timestamps.
 
-- Event ID 1
-- Event ID 4
-- Event ID 16
-
-Provider:
-
-`Microsoft-Windows-Sysmon`
-
-This confirmed that Sysmon was generating telemetry locally.
-
 ---
-
-# 121. Wazuh Sysmon Integration
-
-The Wazuh configuration was confirmed at:
-
-`C:\Program Files (x86)\ossec-agent\ossec.conf`
-
-A backup was created:
 
-    Copy-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" "C:\Program Files (x86)\ossec-agent\ossec.conf.pre-sysmon.bak" -Force
+## Do Not Overreact to One Symptom
 
-No existing Sysmon collection configuration was found.
+A live `jq` error did not justify rebuilding a working Suricata pipeline.
 
-The following block was added inside `<ossec_config>`:
+A soft-lockup message did not justify immediate kernel changes.
 
-    <!-- Sysmon event collection -->
-    <localfile>
-      <location>Microsoft-Windows-Sysmon/Operational</location>
-      <log_format>eventchannel</log_format>
-    </localfile>
+Use end-to-end evidence.
 
-The modified XML was validated.
-
-Result:
-
-`XML VALID`
-
-The Wazuh service was restarted:
-
-    Restart-Service WazuhSvc
-
-Service verification:
-
-    Get-Service WazuhSvc
-
-Result:
-
-`Running`
-
 ---
-
-# 122. Wazuh Sysmon Channel Confirmation
-
-The Wazuh agent log was searched:
-
-    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.log" -Pattern "Sysmon|Microsoft-Windows-Sysmon|eventchannel" | Select-Object -Last 20
 
-The log confirmed:
+## Prefer Built-In Functionality Where Reliable
 
-`Analyzing event log: 'Microsoft-Windows-Sysmon/Operational'.`
+The Suricata custom decoder was retired when structured JSON and built-in Wazuh rules worked correctly.
 
-This proved that the Wazuh agent was actively monitoring the Sysmon event channel.
-
 ---
-
-# 123. End-to-End Sysmon Test
-
-A harmless test process was generated:
-
-    Start-Process cmd.exe -ArgumentList '/c echo SYSMON_WAZUH_TEST_20260913 > C:\Windows\Temp\sysmon-wazuh-test.txt' -Wait
 
-The test marker was:
+## Protect High-Value Identity Systems
 
-`SYSMON_WAZUH_TEST_20260913`
+The Domain Controller was:
 
-The local Sysmon Operational log was searched for Event ID 1.
+- isolated in ADNET
+- not used as a DMZ jump host
+- monitored with Wazuh
+- monitored with Sysmon
 
-The event was successfully found.
-
-This confirmed:
-
-`Test Activity -> Sysmon`
-
 ---
-
-# 124. SIEM Verification
-
-The Wazuh server was then checked.
-
-Sysmon events were searched using:
-
-    sudo grep -R "Microsoft-Windows-Sysmon" /var/ossec/logs/alerts/ 2>/dev/null | tail -n 10
-
-Wazuh alert data contained:
-
-`Microsoft-Windows-Sysmon`
-
-and:
-
-`Microsoft-Windows-Sysmon/Operational`
-
-The generated test command was visible inside the received event data.
-
-This verified the complete telemetry chain:
-
-`Windows Activity`
-
-↓
-
-`Sysmon`
 
-↓
+## Use Defense in Depth
 
-`Windows Event Log`
+DMZ SSH requires:
 
-↓
+- approved firewall source
+- TCP/22 allowance
+- public-key authentication
+- no password authentication
+- no root login
 
-`Wazuh Agent`
-
-↓
-
-`CORPNET`
-
-↓
-
-`OPNsense`
-
-↓
-
-`SOCNET`
-
-↓
-
-`Wazuh Manager`
-
-↓
-
-`Wazuh Alerts`
-
 ---
-
-# 125. Sysmon Verified Snapshot
 
-After the integration was fully tested, LAB-WIN-01 was shut down normally.
+## Snapshots Are Change-Control Tools
 
-A powered-off snapshot was created:
+Snapshots were taken before major infrastructure changes.
 
-`Windows - Sysmon Wazuh Integration Verified`
+Once the environment became stable, intermediate snapshots were removed.
 
-This snapshot represents the known-good Windows endpoint state after Sysmon and Wazuh integration.
-
 ---
-
-# 126. Current Windows Defensive Monitoring Status
 
-LAB-WIN-01 currently has:
+# Project Maturity Evolution
 
-- Wazuh Agent
-- Microsoft Sysmon
-- Sysmon Operational event logging
-- Wazuh Sysmon event collection
-- Cross-zone SIEM forwarding
-- Verified process-creation telemetry
-- Verified SIEM ingestion
-
-The Windows endpoint is now significantly more useful for future blue-team and attack-detection exercises.
-
----
+The complete project can be summarized as:
 
-# 127. Current Defensive Telemetry Path
-
-The current Windows monitoring architecture is:
-
-    LAB-WIN-01
-    10.10.20.20
-         |
-       Sysmon
-         |
-    Windows Event Logs
-         |
-      Wazuh Agent
-         |
-       CORPNET
-         |
+    Flat Learning Lab
+          |
+          v
+    Nmap / SSH / Hydra
+          |
+          v
+       fail2ban
+          |
+          v
+    Windows / Linux Administration
+          |
+          v
       OPNsense
-         |
-       SOCNET
-         |
-    LAB-SIEM-01
-    10.10.40.10
-         |
-    Wazuh Manager
-         |
-    Wazuh Indexer
-         |
-    Wazuh Dashboard
-
-This telemetry path has been tested end-to-end.
+          |
+          v
+    Four-Zone Segmentation
+          |
+          v
+      Wazuh SIEM
+          |
+          v
+    Windows Monitoring
+          |
+          v
+    Linux auditd / Custom Rules
+          |
+          v
+    Firewall Telemetry
+          |
+          v
+      Suricata IDS
+          |
+          v
+    Decoder / rsyslog Engineering
+          |
+          v
+    Active Directory
+          |
+          v
+    Group Policy / DC Monitoring
+          |
+          v
+         DMZ
+          |
+          v
+    Nginx / SSH Hardening / Wazuh
+          |
+          v
+    Six-Zone Validation
+          |
+          v
+    Final Baseline
+          |
+          v
+    SOC / Purple Team Operations
 
 ---
 
-# 128. Next Defensive Security Objectives
-
-The next defensive improvements may include:
-
-1. Advanced Windows Audit Policy
-2. PowerShell Script Block Logging
-3. PowerShell Module Logging
-4. PowerShell Transcription
-5. Windows authentication monitoring
-6. Linux auditd deployment
-7. OPNsense log forwarding
-8. Suricata IDS
-9. Custom Wazuh detection rules
-10. MITRE ATT&CK mapping
-11. Controlled attack simulations
-12. SOC alert investigation
-13. Incident-response exercises
-
-The lab has now progressed beyond basic endpoint monitoring and is developing into a proper detection and response environment.
-
----
-
-## PowerShell Transcription and Wazuh FIM Milestone
-
-### Date
-
-17 September 2026
-
-### Objective
-
-Extend the Windows endpoint telemetry architecture beyond PowerShell Module Logging and Script Block Logging by implementing system-wide PowerShell Transcription and monitoring the resulting transcript repository with Wazuh real-time File Integrity Monitoring.
-
-### PowerShell Transcription Deployment
-
-PowerShell Transcription was enabled system-wide on `LAB-WIN-01`.
-
-Transcript storage was configured at:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-The following transcription capabilities were enabled:
-
-- System-wide transcription
-- Dedicated transcript output directory
-- Invocation headers
-- Automatic transcript generation for new PowerShell processes
-
-A controlled test using:
-
-`CYBERLAB_TRANSCRIPTION_TEST_20260917`
-
-confirmed that PowerShell automatically generated a transcript containing both the executed command and its output.
-
-During validation, PowerShell sessions operating as both the interactive user and `SYSTEM` were observed generating transcripts.
-
-### Transcript Security Review
-
-The transcript directory ACL was inspected before SIEM integration.
-
-The directory was owned by:
-
-`BUILTIN\Administrators`
-
-Permissions for `SYSTEM`, Administrators, creator ownership, and standard users were reviewed.
-
-No ACL changes were made during this phase to avoid interfering with legitimate transcript creation.
-
-Because PowerShell transcripts may contain commands and potentially sensitive command output, full transcript contents were not automatically forwarded to the SIEM.
-
-Instead, File Integrity Monitoring was selected as the initial monitoring approach.
-
-### Wazuh FIM Integration
-
-The Windows Wazuh agent configuration was backed up before modification:
-
-`ossec.conf.pre-transcription.bak`
-
-The existing Wazuh Syscheck configuration was reviewed.
-
-The default scheduled Syscheck interval was:
-
-`43200 seconds`
-
-or:
-
-`12 hours`
-
-The PowerShell transcript repository was therefore configured for real-time monitoring:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-The modified Wazuh XML configuration was successfully validated before the agent was restarted.
-
-`WazuhSvc` was subsequently confirmed to be running.
-
-### Controlled FIM Validation
-
-A temporary controlled file was created inside the transcript repository.
-
-Wazuh successfully detected the file creation from `LAB-WIN-01`.
-
-Verified creation telemetry included:
-
-- Rule ID `554`
-- `File added to the system.`
-- Syscheck event `added`
-- Syscheck mode `realtime`
-
-The temporary test file was then removed.
-
-Wazuh successfully detected the deletion.
-
-Verified deletion telemetry included:
-
-- Rule ID `553`
-- `File deleted.`
-- Syscheck event `deleted`
-- Syscheck mode `realtime`
-
-### Genuine PowerShell Transcript Validation
-
-A new PowerShell process was launched using the marker:
-
-`CYBERLAB_REAL_TRANSCRIPT_FIM_TEST_20260917`
-
-The configured transcription policy automatically generated a genuine PowerShell transcript.
-
-Wazuh detected changes to the automatically generated transcript in real time.
-
-Verified telemetry included:
-
-- Rule ID `550`
-- `Integrity checksum changed.`
-- Agent `LAB-WIN-01`
-- Syscheck mode `realtime`
-- Syscheck event `modified`
-
-This validated the following end-to-end path:
-
-`PowerShell Session`
-
-→ `Automatic PowerShell Transcript`
-
-→ `Windows Transcript Repository`
-
-→ `Wazuh Real-Time FIM`
-
-→ `LAB-WIN-01 Wazuh Agent`
-
-→ `CORPNET`
-
-→ `OPNsense`
-
-→ `SOCNET`
-
-→ `LAB-SIEM-01`
-
-→ `Wazuh Syscheck Alert`
-
-### SIEM Investigation Lessons
-
-Initial investigation used Linux `grep` against Wazuh JSON alerts.
-
-A text search for `powershell_transcript` also matched a Wazuh alert generated by the analyst's own privileged search command on `LAB-SIEM-01`.
-
-This demonstrated that analyst activity can itself become part of monitored security telemetry.
-
-Structured JSON analysis with `jq` was subsequently used to filter genuine FIM events using fields including:
-
-- Agent name
-- Syscheck path
-- Rule ID
-- Rule description
-- Syscheck mode
-- Syscheck event
-
-This provided cleaner and more reliable evidence than unrestricted text searching.
-
-### Current Windows PowerShell Telemetry
-
-`LAB-WIN-01` now provides multiple complementary PowerShell telemetry sources:
-
-- PowerShell Module Logging — Event ID `4103`
-- PowerShell Script Block Logging — Event ID `4104`
-- PowerShell Transcription
-- Sysmon telemetry
-- Wazuh PowerShell Operational collection
-- Wazuh real-time File Integrity Monitoring of PowerShell transcripts
-
-### Recovery Point
-
-After successful verification, `LAB-WIN-01` was cleanly powered off.
-
-A VirtualBox snapshot was created:
-
-`Windows - PowerShell Transcription + Wazuh FIM Verified`
-
-This snapshot represents the verified post-transcription Windows monitoring baseline.
-
-### Milestone Status
-
-**PowerShell Transcription + Wazuh FIM: COMPLETE AND VERIFIED**
-
-### Next Phase
-
-Begin Wazuh Dashboard-based SOC investigation.
-
-The next phase will develop both command-line and graphical SIEM analysis skills so telemetry can be investigated through:
-
-`Endpoint → Wazuh Agent → Wazuh Manager → CLI Analysis + Wazuh Dashboard Analysis`
+# Final Status
+
+The infrastructure build phase is complete.
+
+The lab now provides a realistic environment for:
+
+- SOC analysis
+- threat hunting
+- detection engineering
+- incident investigation
+- firewall analysis
+- network IDS investigation
+- Windows attack simulation
+- Linux attack simulation
+- Active Directory attack simulation
+- DMZ web attack simulation
+- Purple Team exercises
+
+The project should no longer be treated as an unfinished infrastructure build.
+
+The next phase is operational.
+
+Future work should focus on realistic scenarios such as:
+
+- reconnaissance
+- initial access
+- PowerShell abuse
+- credential attacks
+- privilege escalation
+- persistence
+- lateral movement
+- identity abuse
+- web attacks
+- detection gaps
+- alert triage
+- incident response
+
+The infrastructure should only be modified when a future scenario reveals a clear operational requirement.
