@@ -1,681 +1,936 @@
-# Windows Sysmon Deployment and Wazuh Integration
+# Windows Sysmon Monitoring
 
-## 1. Overview
+## Overview
 
-This document describes the deployment of Microsoft Sysmon on `LAB-WIN-01` and its integration with the Wazuh SIEM running on `LAB-SIEM-01`.
+This document records the complete evolution of Sysmon monitoring in the Cybersecurity Home Lab, from the period when the Windows environment relied mainly on standard Windows logs through the final monitored state on both the corporate workstation and the Domain Controller.
 
-The objective was to improve Windows endpoint visibility beyond the standard Windows event logs by collecting detailed telemetry such as:
+Sysmon was not part of the original flat lab.
 
-- Process creation
-- Network activity
-- Service activity
-- File activity
-- Registry activity
-- Driver activity
-- Process relationships
-- Security-relevant endpoint behavior
+The earliest Windows environment focused on:
 
-The complete telemetry path is:
+- connectivity
+- Windows Firewall
+- local event logs
+- basic endpoint configuration
+- attacker/defender interaction
 
-`Windows Activity -> Sysmon -> Windows Event Log -> Wazuh Agent -> OPNsense -> SOCNET -> Wazuh Manager -> Wazuh Alerts`
+As the project matured, standard Windows logging was no longer sufficient for the level of endpoint visibility required for SOC and Purple Team work.
 
-This path was successfully verified end-to-end.
+Sysmon was introduced to provide richer telemetry around:
+
+- process creation
+- command execution
+- parent-child process relationships
+- suspicious binaries
+- DNS activity
+- attacker tooling
+- administrative utilities
+- future persistence and lateral-movement scenarios
+
+The final Sysmon deployment covers:
+
+- `LAB-WIN-01`
+- `LAB-DC-01`
+
+with telemetry ingested into Wazuh.
 
 ---
 
-# 2. Endpoint Information
+# Phase 1 — Before Sysmon
 
-Host:
+The original lab used Windows as a standalone endpoint on:
+
+`192.168.56.20`
+
+The environment relied primarily on:
+
+- Windows Event Viewer
+- standard Security logs
+- Windows Firewall logs
+- local observation
+- basic PowerShell output
+
+This was useful for foundational work, but standard logging alone did not provide the depth needed for realistic endpoint detection.
+
+Examples of missing context included:
+
+- rich parent-child process relationships
+- detailed process execution visibility
+- security-focused process telemetry
+- stronger insight into attacker utilities
+
+---
+
+# Why Sysmon Was Added
+
+As the lab moved toward Wazuh-based monitoring, Sysmon became valuable because it provides security-oriented Windows telemetry beyond the normal event set.
+
+The primary goals were:
+
+- improve endpoint process visibility
+- support detection engineering
+- observe suspicious command execution
+- provide better evidence for SOC investigations
+- monitor attacker and administrative tools
+- correlate Windows activity with Wazuh alerts
+
+---
+
+# First Sysmon Deployment
+
+The first major Sysmon deployment was on:
 
 `LAB-WIN-01`
 
-IP address:
-
-`10.10.20.20`
-
-Security zone:
+This system had already evolved from the original standalone Windows endpoint into the corporate workstation located in:
 
 `CORPNET`
 
-Operating system:
+Address:
 
-`Windows 11 Enterprise`
+`10.10.20.20`
 
-Wazuh agent version:
+Sysmon was installed as part of the broader Windows endpoint-monitoring phase.
 
-`4.14.7`
+---
 
-SIEM server:
+# LAB-WIN-01 Monitoring Context
+
+By the time Sysmon was introduced, the Windows workstation was also being monitored through:
+
+- Windows Security logs
+- Wazuh Agent
+- PowerShell logging
+- Defender
+- Windows Firewall
+- File Integrity Monitoring
+- advanced auditing
+
+Sysmon complemented these sources rather than replacing them.
+
+---
+
+# Sysmon Event Channel
+
+Sysmon records events under:
+
+`Microsoft-Windows-Sysmon/Operational`
+
+Wazuh was configured to ingest this event channel from the Windows endpoint.
+
+This allowed Sysmon events to be analyzed centrally in:
 
 `LAB-SIEM-01`
 
-SIEM address:
+---
 
-`10.10.40.10`
+# Initial Sysmon Objectives
 
-SIEM zone:
+The first configuration focused on collecting useful security telemetry without depending only on default Windows auditing.
 
-`SOCNET`
+Important use cases included:
+
+- process creation
+- suspicious command-line activity
+- LOLBin execution
+- PowerShell
+- command shells
+- attacker tooling
+- administrative utilities
 
 ---
 
-# 3. Pre-Deployment Snapshot
+# Process Creation Visibility
 
-Before installing Sysmon, a VirtualBox snapshot was created:
+One of the most important Sysmon capabilities is process creation monitoring.
 
-`Windows - Pre Sysmon Deployment`
+This helps analysts answer questions such as:
 
-The snapshot was created before modifying the endpoint-monitoring configuration.
+- What process executed?
+- Which parent launched it?
+- Which user context was involved?
+- Was the binary expected?
+- Was the command part of a suspicious sequence?
 
----
-
-# 4. Sysmon Download
-
-PowerShell was opened as Administrator.
-
-The official Microsoft Sysinternals Sysmon archive was downloaded using:
-
-    Invoke-WebRequest -Uri "https://download.sysinternals.com/files/Sysmon.zip" -OutFile "$env:TEMP\Sysmon.zip"
-
-The download completed successfully.
+This significantly improves investigation depth compared with only knowing that a user logged on.
 
 ---
 
-# 5. Sysmon Extraction
+# Command-Line Visibility
 
-A permanent tools directory was created:
+Sysmon process telemetry works particularly well when combined with Windows audit policies that also preserve command-line information.
 
-`C:\Tools\Sysmon`
+This creates multiple sources for validating suspicious execution.
 
-The downloaded archive was extracted using:
+For example:
 
-    New-Item -ItemType Directory -Path "C:\Tools\Sysmon" -Force | Out-Null; Expand-Archive -Path "$env:TEMP\Sysmon.zip" -DestinationPath "C:\Tools\Sysmon" -Force
+    powershell.exe
+        |
+        v
+    suspicious command line
+        |
+        v
+    Sysmon ProcessCreate
+        |
+        v
+    Windows Process Auditing
+        |
+        v
+    Wazuh
 
-The extracted files included:
-
-- `Eula.txt`
-- `Sysmon.exe`
-- `Sysmon64.exe`
-- `Sysmon64a.exe`
-
-Because LAB-WIN-01 is a 64-bit x86 Windows system, `Sysmon64.exe` was selected.
-
----
-
-# 6. Binary Signature Verification
-
-Before executing the downloaded security tool, its Authenticode signature was verified.
-
-Command:
-
-    Get-AuthenticodeSignature "C:\Tools\Sysmon\Sysmon64.exe" | Select-Object Status,@{N='Signer';E={$_.SignerCertificate.Subject}}
-
-Result:
-
-`Status: Valid`
-
-Signer:
-
-`Microsoft Windows Publisher`
-
-Publisher:
-
-`Microsoft Corporation`
-
-This confirmed that the executable was digitally signed by Microsoft.
+This provides stronger evidence than a single event source.
 
 ---
 
-# 7. Sysmon Configuration
+# PowerShell Monitoring Relationship
 
-Instead of installing Sysmon with an empty/default configuration, a detection-focused community configuration was downloaded.
+PowerShell was already a major logging focus in the Windows endpoint.
 
-The SwiftOnSecurity Sysmon configuration was retrieved using:
+Sysmon added an additional layer by recording the execution of:
 
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml" -OutFile "C:\Tools\Sysmon\sysmonconfig.xml"
+- `powershell.exe`
+- `pwsh.exe`
 
-The downloaded file identified itself as:
+while Windows PowerShell logging captured:
 
-`sysmon-config`
+- script blocks
+- modules
+- transcripts
 
-Source project:
-
-`SwiftOnSecurity/sysmon-config`
-
-The configuration source version displayed in the file was:
-
-`74`
-
-Source date:
-
-`2021-07-08`
+Together, these provide broader visibility into PowerShell abuse.
 
 ---
 
-# 8. Sysmon Configuration Inspection
+# LOLBin Monitoring
 
-The beginning of the configuration was inspected using:
+Sysmon is particularly useful for monitoring legitimate Windows binaries that attackers often abuse.
 
-    Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -TotalCount 20
+Examples include:
 
-This confirmed that an XML Sysmon configuration had been downloaded rather than an HTML error page or failed web response.
+- `rundll32.exe`
+- `regsvr32.exe`
+- `mshta.exe`
+- `certutil.exe`
+- `bitsadmin.exe`
+- `wscript.exe`
+- `cscript.exe`
 
----
-
-# 9. XML Validation
-
-PowerShell was used to parse the configuration as XML.
-
-Command:
-
-    [xml]$cfg = Get-Content "C:\Tools\Sysmon\sysmonconfig.xml" -Raw; $cfg.Sysmon.schemaversion
-
-Result:
-
-`4.50`
-
-The configuration therefore parsed successfully.
+These binaries may be legitimate, but their execution can become security-relevant depending on context.
 
 ---
 
-# 10. Sysmon Installation
+# Command Shell Monitoring
 
-Sysmon was installed using the downloaded configuration.
+Important command interpreters include:
 
-Command:
+- `cmd.exe`
+- `powershell.exe`
+- `pwsh.exe`
 
-    & "C:\Tools\Sysmon\Sysmon64.exe" -accepteula -i "C:\Tools\Sysmon\sysmonconfig.xml"
+Monitoring these provides visibility into many attack and administrative workflows.
 
-Installation output confirmed:
+---
 
-- Configuration file validated
-- Sysmon64 installed
-- SysmonDrv installed
-- SysmonDrv started
-- Sysmon64 started
+# Scheduled Task Monitoring Context
 
-Installed Sysmon version:
+The lab also treats:
+
+`schtasks.exe`
+
+as a security-relevant utility.
+
+This is important because scheduled tasks can be used for:
+
+- legitimate administration
+- persistence
+- remote execution
+- privilege escalation workflows
+
+Sysmon process visibility supports later detection engineering around this activity.
+
+---
+
+# Network and DNS Context
+
+Sysmon can also provide visibility into network-related activity.
+
+In the lab, DNS telemetry became particularly useful on the Domain Controller.
+
+This allowed process-linked DNS behaviour to be monitored rather than looking only at raw DNS requests.
+
+---
+
+# Wazuh Ingestion
+
+Sysmon events from `LAB-WIN-01` were successfully ingested into Wazuh.
+
+This confirmed the pipeline:
+
+    Windows Activity
+         |
+         v
+    Sysmon
+         |
+         v
+    Sysmon Operational Log
+         |
+         v
+    Wazuh Agent
+         |
+         v
+    LAB-SIEM-01
+
+---
+
+# Sysmon and Detection Engineering
+
+Once Sysmon events reached Wazuh, they became useful for:
+
+- investigation
+- custom rules
+- correlation
+- future Purple Team testing
+
+This represented a major improvement over the original Windows environment.
+
+---
+
+# Windows Endpoint Security Stack
+
+The workstation monitoring architecture eventually became:
+
+    LAB-WIN-01
+        |
+        +--> Windows Security Logs
+        |
+        +--> Sysmon
+        |
+        +--> PowerShell Logs
+        |
+        +--> Defender
+        |
+        +--> Windows Firewall
+        |
+        +--> File Integrity Monitoring
+        |
+        v
+    Wazuh Agent
+        |
+        v
+    LAB-SIEM-01
+
+Sysmon became one layer within a broader endpoint telemetry strategy.
+
+---
+
+# Active Directory Expansion
+
+When Active Directory was introduced, a new high-value Windows system appeared:
+
+`LAB-DC-01`
+
+Address:
+
+`10.10.50.10`
+
+Zone:
+
+`ADNET`
+
+Because the Domain Controller handles privileged identity operations, Sysmon was later deployed there as well.
+
+---
+
+# Why Sysmon Was Added to the Domain Controller
+
+The Domain Controller is one of the most sensitive systems in the lab.
+
+Monitoring it with only standard Windows logs would leave gaps in process-level visibility.
+
+Sysmon was added to improve detection of activity involving:
+
+- PowerShell
+- command shells
+- administrative tools
+- reconnaissance
+- LOLBins
+- domain utilities
+- suspicious process execution
+
+---
+
+# LAB-DC-01 Sysmon Installation
+
+Sysmon version:
 
 `15.22`
 
-Sysmon supported schema version:
+Binary:
 
-`4.91`
-
-Configuration schema version:
-
-`4.50`
-
-The older configuration schema was accepted successfully by the installed Sysmon version.
-
----
-
-# 11. Sysmon Service Verification
-
-The Windows Sysmon service was checked using:
-
-    Get-Service Sysmon64
-
-Result:
-
-`Running`
-
-This confirmed the Sysmon service was operational.
-
----
-
-# 12. Local Sysmon Event Verification
-
-The Sysmon Operational event channel was queried using:
-
-    Get-WinEvent -LogName "Microsoft-Windows-Sysmon/Operational" -MaxEvents 5 | Select-Object TimeCreated,Id,ProviderName
-
-Recent events included:
-
-- Event ID 1
-- Event ID 4
-- Event ID 16
-
-Provider:
-
-`Microsoft-Windows-Sysmon`
-
-This confirmed Sysmon was actively producing Windows event telemetry.
-
----
-
-# 13. Example Sysmon Event IDs Observed
-
-## Event ID 1
-
-Process creation.
-
-Useful for detecting:
-
-- Command execution
-- PowerShell activity
-- Suspicious child processes
-- Malware execution
-- LOLBins
-- Attack tooling
-
-## Event ID 4
-
-Sysmon service state change.
-
-Useful for detecting changes to the monitoring service.
-
-## Event ID 16
-
-Sysmon configuration change.
-
-Useful for detecting modification or replacement of the Sysmon configuration.
-
----
-
-# 14. Wazuh Agent Configuration Location
-
-The Wazuh agent configuration path was verified using:
-
-    Test-Path "C:\Program Files (x86)\ossec-agent\ossec.conf"
-
-Result:
-
-`True`
+`C:\Tools\Sysmon\Sysmon64.exe`
 
 Configuration file:
 
-`C:\Program Files (x86)\ossec-agent\ossec.conf`
+`sysmon-dc.xml`
+
+The installation was validated successfully.
 
 ---
 
-# 15. Wazuh Configuration Backup
+# Initial Domain Controller Sysmon Configuration
 
-Before editing the Wazuh configuration, a backup was created.
+The initial configuration collected process and DNS activity.
 
-Command:
+The goal was to provide broad visibility first, then tune the configuration based on observed noise.
 
-    Copy-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" "C:\Program Files (x86)\ossec-agent\ossec.conf.pre-sysmon.bak" -Force
+This followed the lab’s normal workflow:
 
-Backup:
-
-`ossec.conf.pre-sysmon.bak`
-
-This provides a rollback point if the event-channel configuration causes problems.
-
----
-
-# 16. Existing Sysmon Configuration Check
-
-The Wazuh configuration was searched for any existing Sysmon configuration.
-
-Command:
-
-    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.conf" -Pattern "Sysmon" -Context 3,3
-
-No existing Sysmon configuration was found.
-
-This prevented duplicate event-channel definitions.
+    Enable
+       |
+       v
+    Observe
+       |
+       v
+    Validate
+       |
+       v
+    Tune
+       |
+       v
+    Revalidate
 
 ---
 
-# 17. Wazuh Configuration Inspection
+# Why Tuning Was Necessary
 
-The end of the existing Wazuh configuration was inspected using:
+Collecting every process event on a Domain Controller can generate a large volume of telemetry.
 
-    Get-Content "C:\Program Files (x86)\ossec-agent\ossec.conf" -Tail 30
+Much of that activity is legitimate Windows background behaviour.
 
-The closing:
+A high-volume configuration would create:
 
-`</ossec_config>`
+- excessive noise
+- harder investigations
+- unnecessary SIEM storage use
+- less useful dashboards
+- lower analyst efficiency
 
-element was identified.
-
-The Sysmon collection block needed to be placed inside the main Wazuh configuration before this closing element.
-
----
-
-# 18. Adding Sysmon Event Collection to Wazuh
-
-The following configuration was added inside `<ossec_config>`:
-
-    <!-- Sysmon event collection -->
-    <localfile>
-      <location>Microsoft-Windows-Sysmon/Operational</location>
-      <log_format>eventchannel</log_format>
-    </localfile>
-
-The configuration instructs the Wazuh agent to monitor:
-
-`Microsoft-Windows-Sysmon/Operational`
-
-The block was inserted using PowerShell:
-
-    $path="C:\Program Files (x86)\ossec-agent\ossec.conf"; $content=Get-Content $path -Raw; $block="`r`n  <!-- Sysmon event collection -->`r`n  <localfile>`r`n    <location>Microsoft-Windows-Sysmon/Operational</location>`r`n    <log_format>eventchannel</log_format>`r`n  </localfile>`r`n"; $content=$content -replace '\r?\n</ossec_config>',"$block`r`n</ossec_config>"; Set-Content -Path $path -Value $content -Encoding UTF8
+The configuration was therefore tuned to focus on high-value activity.
 
 ---
 
-# 19. Wazuh XML Validation
+# Final ProcessCreate Focus
 
-Before restarting the Wazuh service, the modified configuration was parsed as XML.
+The tuned Domain Controller Sysmon configuration focuses on security-relevant executables.
 
-Command:
+Examples include:
 
-    try { [xml]$xml = Get-Content "C:\Program Files (x86)\ossec-agent\ossec.conf" -Raw; "XML VALID" } catch { $_.Exception.Message }
-
-Result:
-
-`XML VALID`
-
-This reduced the risk of restarting Wazuh with malformed XML.
-
----
-
-# 20. Wazuh Agent Restart
-
-The Wazuh agent was restarted:
-
-    Restart-Service WazuhSvc
-
-The service state was then checked:
-
-    Get-Service WazuhSvc
-
-Result:
-
-`Running`
-
-This confirmed the Wazuh agent accepted the modified configuration and restarted successfully.
+- `powershell`
+- `pwsh`
+- `cmd`
+- `rundll32`
+- `regsvr32`
+- `mshta`
+- `certutil`
+- `bitsadmin`
+- `wscript`
+- `cscript`
+- `schtasks`
+- `nltest`
+- `ntdsutil`
+- `whoami`
+- `net`
+- `net1`
 
 ---
 
-# 21. Wazuh Sysmon Channel Verification
+# PowerShell
 
-The Wazuh agent log was searched for references to Sysmon.
+Monitored executables include:
 
-Command:
-
-    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.log" -Pattern "Sysmon|Microsoft-Windows-Sysmon|eventchannel" | Select-Object -Last 20
-
-The log contained:
-
-`Analyzing event log: 'Microsoft-Windows-Sysmon/Operational'.`
-
-This confirmed that the Wazuh agent had successfully opened the Sysmon Operational event channel.
-
-At this stage the local collection chain was:
-
-`Windows Activity -> Sysmon -> Windows Event Log -> Wazuh Agent`
-
----
-
-# 22. Sysmon Test Event
-
-A harmless test process was generated to verify telemetry collection.
-
-Command:
-
-    Start-Process cmd.exe -ArgumentList '/c echo SYSMON_WAZUH_TEST_20260913 > C:\Windows\Temp\sysmon-wazuh-test.txt' -Wait
-
-This command simply:
-
-1. Started `cmd.exe`
-2. Wrote a test string to a temporary file
-3. Created identifiable process telemetry
-
-Test marker:
-
-`SYSMON_WAZUH_TEST_20260913`
-
----
-
-# 23. Local Test Verification
-
-The recent Sysmon process-creation events were searched for the test marker.
-
-Command:
-
-    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational';Id=1;StartTime=(Get-Date).AddMinutes(-5)} | Where-Object {$_.Message -match 'SYSMON_WAZUH_TEST_20260913|sysmon-wazuh-test\.txt'} | Select-Object -First 3 TimeCreated,Id,Message
-
-Result included:
-
-`Event ID 1`
-
-Provider:
-
-`Microsoft-Windows-Sysmon`
-
-This confirmed:
-
-`Test Process -> Sysmon Event`
-
----
-
-# 24. SIEM-Side Verification
-
-After starting `LAB-SIEM-01`, Wazuh alert logs were inspected.
-
-Initial marker search:
-
-    sudo grep -R "SYSMON_WAZUH_TEST_20260913" /var/ossec/logs/alerts/ /var/ossec/logs/archives/ 2>/dev/null | tail -n 20
-
-A broader Sysmon-provider search was also performed:
-
-    sudo grep -R "Microsoft-Windows-Sysmon" /var/ossec/logs/alerts/ 2>/dev/null | tail -n 10
-
-The Wazuh alert log contained events with:
-
-`Microsoft-Windows-Sysmon`
+`powershell`
 
 and:
 
-`Microsoft-Windows-Sysmon/Operational`
+`pwsh`
 
-The test process data was visible inside the received event, including the distinctive test command.
+These can be used for:
 
-This confirmed the complete telemetry pipeline.
+- administration
+- scripting
+- reconnaissance
+- execution
+- post-exploitation activity
 
----
-
-# 25. Verified Telemetry Path
-
-The final verified path is:
-
-    LAB-WIN-01
-    Windows activity
-          |
-        Sysmon
-          |
-    Microsoft-Windows-Sysmon/Operational
-          |
-      Wazuh Agent
-          |
-       CORPNET
-    10.10.20.0/24
-          |
-       OPNsense
-          |
-        SOCNET
-    10.10.40.0/24
-          |
-     LAB-SIEM-01
-          |
-      Wazuh Manager
-          |
-      Wazuh Alerts
-
-Every major stage was independently tested.
+Because PowerShell is already heavily instrumented elsewhere in the lab, Sysmon adds process context around that activity.
 
 ---
 
-# 26. Firewall Architecture
+# CMD
 
-No broad CORPNET-to-SOCNET access was required.
+`cmd`
 
-Existing least-privilege Wazuh firewall rules allow the Windows endpoint to communicate with the Wazuh server using the required Wazuh services.
+is included because it remains a common shell for:
 
-This maintains the segmented security architecture.
-
----
-
-# 27. Post-Deployment Snapshot
-
-After Sysmon and Wazuh integration were fully verified, Windows was shut down normally.
-
-A powered-off VirtualBox snapshot was then created:
-
-`Windows - Sysmon Wazuh Integration Verified`
-
-This snapshot represents the current known-good Windows endpoint monitoring state.
+- administrative commands
+- batch scripts
+- attacker execution
+- chained utilities
 
 ---
 
-# 28. Snapshot Storage Lesson
+# rundll32
 
-During this phase, a major VirtualBox storage-management problem was also identified.
+`rundll32`
 
-The physical host previously reached approximately:
-
-`0 GB free`
-
-Investigation showed that multiple long VirtualBox snapshot chains had created large differencing disks.
-
-Examples included snapshot VDI files tens of gigabytes in size.
-
-The environment was shut down safely and obsolete snapshots were consolidated using VirtualBox itself.
-
-Snapshot files were never manually deleted.
-
-The cleanup covered:
-
-- LAB-WIN-01
-- LAB-UBUNTU-01
-- LAB-KALI-01
-- LAB-SIEM-01
-- LAB-FW-01
-
-The host eventually recovered to more than:
-
-`100 GB free`
-
-Additional cleanup of obsolete non-lab files increased free storage further.
+is monitored because it can execute DLL exports and is frequently abused as a living-off-the-land binary.
 
 ---
 
-# 29. New Snapshot Policy
+# regsvr32
 
-The following snapshot policy was adopted:
+`regsvr32`
 
-- Maintain approximately 2–3 meaningful snapshots per VM where practical
-- Prefer powered-off snapshots
-- Avoid snapshots for every minor change
-- Keep major verified milestones
-- Remove obsolete pre-change snapshots after the newer state is proven stable
-- Monitor host free space regularly
-- Never manually delete `.vdi`, `.sav`, or VirtualBox snapshot files
-- Treat snapshots as temporary rollback points, not backups
+is monitored because it can be abused to execute code through legitimate Windows components.
 
 ---
 
-# 30. Security Value of Sysmon
+# mshta
 
-Sysmon significantly improves endpoint visibility because standard Windows event logging does not provide the same level of detailed endpoint telemetry.
+`mshta`
 
-Sysmon will later support detection of activity such as:
-
-- Suspicious PowerShell
-- Command-shell execution
-- Malware execution
-- Credential-access tooling
-- Persistence techniques
-- Suspicious network connections
-- Registry modification
-- Process injection indicators
-- Living-off-the-land binaries
-- Attack-tool execution
-- Privilege escalation activity
-
-This provides the foundation for future attack-and-detection exercises.
+is monitored because it can execute HTML Application content and is frequently associated with LOLBin abuse.
 
 ---
 
-# 31. Current Status
+# certutil
 
-Sysmon download:
+`certutil`
 
-`Verified`
+is monitored because, beyond its legitimate certificate functions, it can be abused for:
 
-Microsoft digital signature:
-
-`Valid`
-
-Sysmon configuration:
-
-`Validated`
-
-Sysmon service:
-
-`Running`
-
-Sysmon driver:
-
-`Running`
-
-Sysmon Operational event log:
-
-`Generating events`
-
-Wazuh configuration backup:
-
-`Completed`
-
-Wazuh XML configuration:
-
-`Valid`
-
-Wazuh service:
-
-`Running`
-
-Sysmon event channel collection:
-
-`Verified`
-
-Local Event ID 1 generation:
-
-`Verified`
-
-Wazuh SIEM ingestion:
-
-`Verified`
-
-End-to-end telemetry path:
-
-`Operational`
-
-Post-deployment snapshot:
-
-`Created`
+- file transfer
+- encoding
+- decoding
+- attacker staging
 
 ---
 
-# 32. Next Improvements
+# bitsadmin
 
-Future Windows telemetry improvements may include:
+`bitsadmin`
 
-- PowerShell Script Block Logging
-- PowerShell Module Logging
-- PowerShell Transcription
-- Process creation command-line auditing
-- Advanced Windows Audit Policy
-- Windows Defender event monitoring
-- Authentication auditing
-- Account-management auditing
-- Scheduled-task monitoring
-- Service-installation monitoring
-- Custom Wazuh rules
-- MITRE ATT&CK mapping
-- Detection validation using Kali
-- SOC investigation exercises
+is monitored because Background Intelligent Transfer Service functionality has historically been abused for file transfer and persistence-related activity.
 
-The objective is to progressively turn LAB-WIN-01 into a realistic monitored enterprise endpoint.
+---
+
+# Script Hosts
+
+The configuration monitors:
+
+- `wscript`
+- `cscript`
+
+These are important because attackers may use Windows Script Host to execute:
+
+- VBScript
+- JScript
+- other script-based payloads
+
+---
+
+# Scheduled Tasks
+
+`schtasks`
+
+is monitored because scheduled tasks can be used for:
+
+- persistence
+- execution
+- remote administration
+- privilege-related activity
+
+---
+
+# nltest
+
+`nltest`
+
+is included because it can be used for legitimate Active Directory troubleshooting and also domain reconnaissance.
+
+Monitoring it is especially valuable on the Domain Controller.
+
+---
+
+# ntdsutil
+
+`ntdsutil`
+
+is particularly security-sensitive on a Domain Controller.
+
+It is a legitimate Active Directory administration utility but can interact with highly sensitive directory data.
+
+Its execution should therefore be visible to the SOC.
+
+---
+
+# whoami
+
+`whoami`
+
+is monitored because it is frequently used during reconnaissance to determine:
+
+- current user
+- groups
+- privileges
+
+While common, it can become important when correlated with suspicious activity.
+
+---
+
+# net and net1
+
+`net`
+
+and:
+
+`net1`
+
+are monitored because they can be used for:
+
+- account enumeration
+- group enumeration
+- service administration
+- share discovery
+- user management
+
+These are common both in administration and attacker reconnaissance.
+
+---
+
+# DNS Monitoring Tuning
+
+DNS telemetry was also tuned.
+
+Rather than collecting every DNS query indiscriminately, the configuration focuses on DNS activity associated with security-relevant executables.
+
+Examples include:
+
+- powershell
+- pwsh
+- cmd
+- certutil
+- mshta
+- wscript
+- cscript
+
+This helps identify suspicious process-driven DNS activity while reducing ordinary system noise.
+
+---
+
+# Why Process-Aware DNS Matters
+
+Raw DNS logs can show which domain was queried.
+
+Sysmon can add process context.
+
+For example:
+
+    powershell.exe
+         |
+         v
+    DNS Query
+         |
+         v
+    suspicious-domain.example
+
+This provides much more investigation value than a DNS query without process attribution.
+
+---
+
+# Domain Controller Wazuh Validation
+
+After Sysmon deployment, `LAB-DC-01` remained connected to Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+    Status: Active
+
+Sysmon events were successfully ingested.
+
+Status:
+
+**PASS**
+
+---
+
+# Post-Tuning Validation
+
+After the Sysmon configuration was tuned, monitoring was tested again.
+
+The objective was to confirm that:
+
+- Sysmon remained active
+- the configuration loaded successfully
+- targeted process events were still collected
+- DNS telemetry remained available
+- Wazuh ingestion continued
+
+The tuned configuration remained functional.
+
+Status:
+
+**PASS**
+
+---
+
+# Sysmon and Active Directory Auditing
+
+Sysmon does not replace Active Directory security auditing.
+
+The Domain Controller also produces important standard Windows events such as:
+
+- `5136`
+- `4719`
+- `4672`
+
+The combination provides broader visibility.
+
+For example:
+
+    Active Directory Change
+           |
+           +--> Windows Security Event
+           |
+           +--> Sysmon Process Context
+           |
+           v
+        Wazuh
+
+This can help identify not only that a change occurred but also which process activity surrounded it.
+
+---
+
+# LAB-WIN-01 vs LAB-DC-01 Monitoring
+
+The two systems use Sysmon for different operational roles.
+
+## LAB-WIN-01
+
+Focus:
+
+- user endpoint behaviour
+- PowerShell
+- suspicious processes
+- attacker activity
+- corporate workstation scenarios
+
+## LAB-DC-01
+
+Focus:
+
+- privileged process execution
+- domain utilities
+- identity reconnaissance
+- directory administration
+- high-value LOLBin activity
+
+Both feed into the same SIEM.
+
+---
+
+# Purple Team Value
+
+Sysmon makes it possible to run realistic simulations and evaluate whether the defensive side can observe attacker behaviour.
+
+Potential future scenarios include:
+
+- suspicious PowerShell
+- LOLBin execution
+- scheduled-task persistence
+- command-shell reconnaissance
+- certutil file transfer
+- domain enumeration
+- ntdsutil execution
+- script-host execution
+
+The attacker action can then be correlated with:
+
+- Sysmon
+- Windows Security events
+- PowerShell logs
+- firewall activity
+- Wazuh alerts
+
+---
+
+# Detection Workflow
+
+A typical future Sysmon-driven detection workflow is:
+
+    Attacker Action
+         |
+         v
+    Windows Process Execution
+         |
+         v
+    Sysmon Event
+         |
+         v
+    Wazuh Agent
+         |
+         v
+    LAB-SIEM-01
+         |
+         v
+    Alert / Investigation
+         |
+         v
+    Detection Tuning
+
+This reflects the Purple Team methodology used throughout the lab.
+
+---
+
+# Noise Reduction Philosophy
+
+The final Sysmon design follows an important principle:
+
+**More telemetry is not automatically better telemetry.**
+
+The objective is not to collect every possible event.
+
+The objective is to collect enough high-quality data to support:
+
+- detection
+- investigation
+- threat hunting
+- incident response
+
+without overwhelming the SIEM with low-value noise.
+
+---
+
+# Final Sysmon Coverage
+
+Final monitored Windows systems:
+
+| System | Role | Sysmon Status |
+|---|---|---|
+| `LAB-WIN-01` | Corporate Workstation | Active |
+| `LAB-DC-01` | Domain Controller | Active |
+
+Both send telemetry to:
+
+`LAB-SIEM-01`
+
+---
+
+# Final Validation Summary
+
+| Validation | Result |
+|---|---|
+| Sysmon installed on LAB-WIN-01 | PASS |
+| Sysmon telemetry to Wazuh | PASS |
+| Process monitoring | PASS |
+| PowerShell process visibility | PASS |
+| Sysmon installed on LAB-DC-01 | PASS |
+| Sysmon 15.22 operational | PASS |
+| `sysmon-dc.xml` loaded | PASS |
+| Domain Controller telemetry to Wazuh | PASS |
+| ProcessCreate tuning | PASS |
+| DNS tuning | PASS |
+| Security-relevant tools retained | PASS |
+| Wazuh agent remained Active | PASS |
+
+---
+
+# Historical vs Current State
+
+This document intentionally preserves the complete Sysmon evolution.
+
+Historical stages include:
+
+- no Sysmon
+- standard Windows logs only
+- first workstation Sysmon deployment
+- Wazuh Sysmon ingestion
+- Active Directory introduction
+- Domain Controller Sysmon deployment
+- broad initial DC telemetry
+- tuning to reduce noise
+
+The authoritative current state is:
+
+    LAB-WIN-01:
+      Sysmon: Active
+      Wazuh Ingestion: Active
+
+    LAB-DC-01:
+      Sysmon Version: 15.22
+      Configuration: sysmon-dc.xml
+      ProcessCreate Filtering: Tuned
+      DNS Filtering: Tuned
+      Wazuh Ingestion: Active
+
+---
+
+# Evolution Summary
+
+Sysmon monitoring evolved through:
+
+    Standard Windows Logs
+          |
+          v
+    Need for Richer Endpoint Visibility
+          |
+          v
+    LAB-WIN-01 Sysmon
+          |
+          v
+    Wazuh Ingestion
+          |
+          v
+    Endpoint Detection Engineering
+          |
+          v
+    Active Directory Deployment
+          |
+          v
+    LAB-DC-01 Sysmon
+          |
+          v
+    Broad Initial Collection
+          |
+          v
+    Noise Analysis
+          |
+          v
+    Process and DNS Tuning
+          |
+          v
+    Final Dual-System Sysmon Monitoring
+
+---
+
+# Final Status
+
+The Sysmon infrastructure phase is complete.
+
+The Cybersecurity Home Lab now has enhanced Windows process visibility on both:
+
+- the corporate workstation
+- the Domain Controller
+
+Sysmon events are centrally available in Wazuh and are ready to support:
+
+- SOC investigations
+- threat hunting
+- detection engineering
+- Active Directory attack detection
+- endpoint attack simulation
+- Purple Team exercises
+
+Future work should focus on generating realistic attacker behaviours and building or tuning detections around the existing telemetry rather than expanding baseline Sysmon infrastructure without a specific operational requirement.
