@@ -1,1353 +1,714 @@
 # VirtualBox Networking Architecture
 
-## 1. Overview
+## Overview
 
-This document describes the VirtualBox networking architecture used in my cybersecurity homelab.
+The Cybersecurity Home Lab is implemented entirely within Oracle VirtualBox using a combination of:
 
-The environment originally used a simple two-adapter design:
+- one upstream NAT interface
+- six isolated VirtualBox Internal Networks
+- OPNsense as the central Layer 3 firewall and router
 
-- VirtualBox NAT for Internet access
-- A shared internal laboratory network for VM-to-VM communication
+This design allows the lab to simulate enterprise network segmentation without requiring physical networking equipment.
 
-As the homelab developed, this flat architecture was replaced with a segmented design using OPNsense as the central firewall, router, NAT gateway, DNS service, and security-policy enforcement point.
+All communication between security zones must traverse `LAB-FW-01`, where OPNsense applies firewall policy, routing, logging, and intrusion detection.
 
-The current architecture uses separate VirtualBox Internal Networks for:
+The final environment contains six internal security zones:
 
-- CORPNET
-- REDNET
-- SERVERNET
-
-Only the OPNsense firewall has direct access to VirtualBox NAT.
-
-All internal systems must reach external networks through OPNsense.
-
----
-
-## 2. Virtualization Platform
-
-The laboratory is hosted using:
-
-`Oracle VirtualBox`
-
-VirtualBox provides:
-
-- Virtual machines
-- Virtual network adapters
-- NAT connectivity
-- Internal networks
-- Network isolation
-- Snapshots
-- Virtual storage
-- Controlled laboratory environments
-
-VirtualBox networking is used to simulate separate enterprise-style security zones.
-
----
-
-## 3. Original Networking Design
-
-The original laboratory contained:
-
-- Kali Linux
-- Windows 11 Enterprise
-- Ubuntu Server
-
-Each VM had:
-
-Adapter 1:
-
-`NAT`
-
-Purpose:
-
-Direct Internet access through VirtualBox.
-
-Adapter 2:
-
-`LAB-NET`
-
-Purpose:
-
-Communication between laboratory systems.
-
-The original LAB-NET network was:
-
-`192.168.56.0/24`
-
-Addresses included:
-
-Kali:
-
-`192.168.56.10`
-
-Windows:
-
-`192.168.56.20`
-
-Ubuntu:
-
-`192.168.56.30`
-
----
-
-## 4. Limitations of the Original Design
-
-The flat architecture was useful for learning basic networking but had several limitations.
-
-### No Central Firewall
-
-Traffic between Kali, Windows, and Ubuntu could travel directly across LAB-NET.
-
-### Limited Segmentation
-
-Offensive, defensive, and server systems existed on the same network.
-
-### Direct Internet Bypass
-
-Each VM had its own VirtualBox NAT adapter.
-
-This meant Internet traffic did not need to pass through a security gateway.
-
-### Limited Monitoring
-
-There was no central point where inter-zone traffic could be inspected or logged.
-
-### Reduced Enterprise Realism
-
-Real environments commonly separate:
-
-- Users
-- Servers
-- Security systems
-- Management networks
-- Untrusted systems
-
-The original topology did not provide this separation.
-
----
-
-## 5. Redesigned Architecture
-
-The networking design was upgraded by deploying:
-
-`LAB-FW-01`
-
-running:
-
-`OPNsense`
-
-OPNsense now acts as the central:
-
-- Firewall
-- Router
-- NAT gateway
-- DNS service
-- NTP service
-- Security-policy enforcement point
-- Logging platform
-
-The architecture changed from:
-
-VM → VirtualBox NAT → Internet
-
-to:
-
-VM → Security Zone → OPNsense → VirtualBox NAT → Internet
-
----
-
-## 6. Final VirtualBox Networks
-
-The current design uses the following networks:
-
-| VirtualBox Network | Type | Purpose |
+| Zone | VirtualBox Internal Network | Subnet |
 |---|---|---|
-| NAT | VirtualBox NAT | OPNsense WAN Internet access |
-| `CORP-NET` | Internal Network | Trusted endpoint and management systems |
-| `RED-NET` | Internal Network | Offensive-security systems |
-| `SERVER-NET` | Internal Network | Protected server systems |
-
-The former:
-
-`LAB-NET`
-
-network has been retired from the active architecture.
+| REDNET | `RED-NET` | `10.10.10.0/24` |
+| CORPNET | `CORP-NET` | `10.10.20.0/24` |
+| SERVERNET | `SERVER-NET` | `10.10.30.0/24` |
+| SOCNET | `SOC-NET` | `10.10.40.0/24` |
+| ADNET | `AD-NET` | `10.10.50.0/24` |
+| DMZ | `DMZ-NET` | `10.10.60.0/24` |
 
 ---
 
-## 7. High-Level VirtualBox Topology
+## Design Principles
 
-The current topology is:
+The VirtualBox network design follows several security principles:
 
-Internet
-|
-v
-VirtualBox NAT
-|
-v
-LAB-FW-01
-OPNsense
-|
-+----------------------+----------------------+----------------------+
-|                      |                      |
-v                      v                      v
-RED-NET               CORP-NET               SERVER-NET
-10.10.10.0/24         10.10.20.0/24          10.10.30.0/24
-|                      |                      |
-v                      v                      v
-LAB-KALI-01           LAB-WIN-01             LAB-UBUNTU-01
-10.10.10.10           10.10.20.20            10.10.30.30
+1. Each trust zone uses a separate Layer 2 network.
+2. Endpoint virtual machines connect only to their assigned security zone.
+3. OPNsense is the only system connected to multiple security zones.
+4. Inter-zone communication is controlled by firewall policy.
+5. Offensive systems are isolated from production-style infrastructure.
+6. Internet connectivity is routed through OPNsense.
+7. Security monitoring remains centralized in SOCNET.
+8. No endpoint requires VirtualBox NAT directly.
 
-All inter-zone traffic passes through OPNsense.
+This prevents the lab from becoming a flat network where systems can communicate freely.
 
 ---
 
-## 8. OPNsense VirtualBox Adapters
+## High-Level VirtualBox Design
 
-LAB-FW-01 uses four VirtualBox network adapters.
+The architecture can be represented as:
 
-### Adapter 1
+    Internet
+       |
+       |
+    VirtualBox NAT
+       |
+       v
+    LAB-FW-01
+    OPNsense
+       |
+       +---------------------------------------------+
+       |         |          |         |       |     |
+       v         v          v         v       v     v
+    RED-NET   CORP-NET   SERVER-NET SOC-NET AD-NET DMZ-NET
+       |         |          |         |       |     |
+       v         v          v         v       v     v
+     Kali      Windows    Ubuntu     Wazuh    DC   Nginx
 
-Attached To:
-
-`NAT`
-
-OPNsense Interface:
-
-`em0`
-
-Role:
-
-`WAN`
-
-Address:
-
-`10.0.2.15/24`
-
-Gateway:
-
-`10.0.2.2`
-
-Purpose:
-
-Internet connectivity.
+OPNsense provides routing between the internal networks.
 
 ---
 
-### Adapter 2
+# LAB-FW-01 VirtualBox Networking
 
-Attached To:
+`LAB-FW-01` is the central networking device in the environment.
 
-`Internal Network`
+It is the only virtual machine with interfaces connected to all six security zones.
 
-Network Name:
+## Adapter Mapping
 
-`CORP-NET`
-
-OPNsense Interface:
-
-`em1`
-
-Role:
-
-`CORPNET`
-
-Address:
-
-`10.10.20.1/24`
-
-Purpose:
-
-Trusted management and endpoint network.
-
----
-
-### Adapter 3
-
-Attached To:
-
-`Internal Network`
-
-Network Name:
-
-`RED-NET`
-
-OPNsense Interface:
-
-`em2`
-
-Role:
-
-`REDNET`
-
-Address:
-
-`10.10.10.1/24`
-
-Purpose:
-
-Offensive-security network.
-
----
-
-### Adapter 4
-
-Attached To:
-
-`Internal Network`
-
-Network Name:
-
-`SERVER-NET`
-
-OPNsense Interface:
-
-`em3`
-
-Role:
-
-`SERVERNET`
-
-Address:
-
-`10.10.30.1/24`
-
-Purpose:
-
-Protected server network.
-
----
-
-## 9. OPNsense Interface Mapping
-
-The final firewall mapping is:
-
-| VirtualBox Adapter | OPNsense Device | Zone | Address |
+| Adapter | VirtualBox Mode | Network | OPNsense Role |
 |---|---|---|---|
-| Adapter 1 | `em0` | WAN | `10.0.2.15/24` |
-| Adapter 2 | `em1` | CORPNET | `10.10.20.1/24` |
-| Adapter 3 | `em2` | REDNET | `10.10.10.1/24` |
-| Adapter 4 | `em3` | SERVERNET | `10.10.30.1/24` |
+| Adapter 1 | NAT | VirtualBox NAT | WAN / Internet |
+| Adapter 2 | Internal Network | `CORP-NET` | CORPNET |
+| Adapter 3 | Internal Network | `RED-NET` | REDNET |
+| Adapter 4 | Internal Network | `SERVER-NET` | SERVERNET |
+| Adapter 5 | Internal Network | `SOC-NET` | SOCNET |
+| Adapter 6 | Internal Network | `AD-NET` | ADNET |
+| Adapter 7 | Internal Network | `DMZ-NET` | DMZ |
+| Adapter 8 | Disabled | — | Unused |
 
-The interface assignments were verified using MAC addresses before final configuration.
-
----
-
-## 10. OPNsense Interface MAC Verification
-
-The firewall interfaces were identified using their MAC addresses.
-
-| Interface | MAC Address | Role |
-|---|---|---|
-| `em0` | `08:00:27:3B:19:9B` | WAN |
-| `em1` | `08:00:27:04:74:7C` | CORPNET |
-| `em2` | `08:00:27:6C:10:29` | REDNET |
-| `em3` | `08:00:27:93:06:8C` | SERVERNET |
-
-This reduced the risk of assigning the wrong VirtualBox adapter to a security zone.
+The additional interfaces beyond the standard VirtualBox GUI-visible adapters were configured using `VBoxManage`.
 
 ---
 
-## 11. Kali Linux Networking
+## DMZ Adapter Creation
 
-Kali Linux is assigned to:
+The seventh network adapter was added to `LAB-FW-01` using VirtualBox command-line management.
 
-`RED-NET`
+The adapter was configured as:
 
-Final IPv4 configuration:
+    NIC 7
+    Mode: Internal Network
+    Network: DMZ-NET
+    Adapter Type: Intel PRO/1000 MT Desktop (82540EM)
+    Cable Connected: Yes
 
-`10.10.10.10/24`
+This provided the dedicated OPNsense interface required for the DMZ.
 
-Default Gateway:
+OPNsense detected this adapter as:
 
-`10.10.10.1`
+`em6`
 
-DNS:
+The interface was assigned as:
 
-`10.10.10.1`
+`DMZ`
 
-Primary role:
+with:
 
-`Offensive Security Workstation`
-
-Kali's original direct NAT adapter is disabled.
-
-Its active network path is:
-
-Kali  
-↓  
-RED-NET  
-↓  
-OPNsense  
-↓  
-WAN  
-↓  
-Internet
+`10.10.60.1/24`
 
 ---
 
-## 12. Kali Interface Renumbering
+# OPNsense Interface Addressing
 
-During the final Kali migration, the original NAT adapter was disabled.
+The firewall provides the default gateway for every internal security zone.
 
-After this occurred, the remaining RED-NET interface was renumbered by the guest operating system.
-
-The interface that had previously been used as:
-
-`eth1`
-
-became:
-
-`eth0`
-
-The NetworkManager profile was therefore rebound to the active RED-NET interface.
-
-The final active Kali interface is:
-
-`eth0`
-
-IPv4:
-
-`10.10.10.10/24`
-
-Default Gateway:
-
-`10.10.10.1`
-
----
-
-## 13. Kali NetworkManager Configuration
-
-The RED-NET NetworkManager profile is configured with:
-
-IPv4 Address:
-
-`10.10.10.10/24`
-
-Gateway:
-
-`10.10.10.1`
-
-DNS:
-
-`10.10.10.1`
-
-Default Route:
-
-Enabled
-
-Interface:
-
-`eth0`
-
-The profile was also configured for automatic connection after reboot.
-
-This ensures Kali reconnects to REDNET automatically.
-
----
-
-## 14. Windows Networking
-
-Windows 11 Enterprise is assigned to:
-
-`CORP-NET`
-
-Final IPv4 Address:
-
-`10.10.20.20/24`
-
-Default Gateway:
-
-`10.10.20.1`
-
-DNS:
-
-`10.10.20.1`
-
-Active Interface Name:
-
-`CORP-NET`
-
-Primary Role:
-
-`Management / Defensive Endpoint`
-
-Windows currently has only CORP-NET active for laboratory networking.
-
----
-
-## 15. Windows Direct NAT Removal
-
-Windows originally had a direct VirtualBox NAT adapter.
-
-During final migration, CORP-NET was configured as the preferred route through OPNsense.
-
-After OPNsense routing and Internet access were verified, the direct NAT adapter was disabled.
-
-The old LAB-NET adapter was also disabled.
-
-The final Windows default route is:
-
-`0.0.0.0/0 → 10.10.20.1`
-
-through:
-
-`CORP-NET`
-
-There is no active default route through:
-
-`10.0.2.2`
-
----
-
-## 16. Ubuntu Server Networking
-
-Ubuntu Server is assigned to:
-
-`SERVER-NET`
-
-Final IPv4 Address:
-
-`10.10.30.30/24`
-
-Default Gateway:
-
-`10.10.30.1`
-
-DNS:
-
-`10.10.30.1`
-
-Active Interface:
-
-`enp0s8`
-
-Primary Role:
-
-`Protected Linux Server`
-
-Ubuntu's original direct VirtualBox NAT adapter is disabled.
-
----
-
-## 17. Ubuntu Interface Persistence
-
-Before disabling Ubuntu's original NAT adapter, the SERVERNET interface was associated with its MAC address.
-
-SERVERNET MAC:
-
-`08:00:27:07:1D:91`
-
-Netplan uses:
-
-`match:`
-
-with the interface MAC address.
-
-It also uses:
-
-`set-name: enp0s8`
-
-This prevents unexpected interface naming changes from breaking the SERVERNET configuration.
-
----
-
-## 18. Ubuntu Final Routing
-
-Ubuntu's final default route is:
-
-`default via 10.10.30.1 dev enp0s8`
-
-Additional internal routes include:
-
-`10.10.10.0/24 via 10.10.30.1`
-
-`10.10.20.0/24 via 10.10.30.1`
-
-The directly connected network is:
-
-`10.10.30.0/24`
-
-There is no active default route through the original VirtualBox NAT gateway.
-
----
-
-## 19. Direct NAT Bypass Status
-
-The final architecture intentionally prevents internal VMs from bypassing OPNsense.
-
-| System | Direct VirtualBox NAT |
+| Security Zone | OPNsense Gateway |
 |---|---|
-| OPNsense | Enabled |
-| Kali Linux | Disabled |
-| Windows 11 | Disabled |
-| Ubuntu Server | Disabled |
+| REDNET | `10.10.10.1` |
+| CORPNET | `10.10.20.1` |
+| SERVERNET | `10.10.30.1` |
+| SOCNET | `10.10.40.1` |
+| ADNET | `10.10.50.1` |
+| DMZ | `10.10.60.1` |
 
-Only:
+No upstream gateway is configured on the internal OPNsense interfaces.
+
+The WAN/NAT interface provides external connectivity.
+
+---
+
+# LAB-KALI-01
+
+## Purpose
+
+`LAB-KALI-01` represents the offensive security workstation.
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: RED-NET
+
+## Addressing
+
+    IP: 10.10.10.10
+    Gateway: 10.10.10.1
+    Zone: REDNET
+
+The Kali system does not receive unrestricted access to protected internal networks.
+
+All communication must pass through OPNsense.
+
+---
+
+# LAB-WIN-01
+
+## Purpose
+
+`LAB-WIN-01` represents a corporate Windows workstation.
+
+It is joined to the:
+
+`cyberlab.internal`
+
+Active Directory domain.
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: CORP-NET
+
+## Addressing
+
+    IP: 10.10.20.20
+    Gateway: 10.10.20.1
+    Zone: CORPNET
+
+The workstation communicates with Active Directory through explicit firewall rules.
+
+It also functions as the approved administrative workstation for DMZ SSH management.
+
+---
+
+# LAB-UBUNTU-01
+
+## Purpose
+
+`LAB-UBUNTU-01` represents an internal Linux server.
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: SERVER-NET
+
+## Addressing
+
+    IP: 10.10.30.30
+    Gateway: 10.10.30.1
+    Zone: SERVERNET
+
+The server is isolated from unnecessary workstation and DMZ access.
+
+Required Wazuh communication to SOCNET is explicitly permitted.
+
+---
+
+# LAB-SIEM-01
+
+## Purpose
+
+`LAB-SIEM-01` hosts the centralized Wazuh security monitoring infrastructure.
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: SOC-NET
+
+## Addressing
+
+    IP: 10.10.40.10
+    Gateway: 10.10.40.1
+    Zone: SOCNET
+
+The SIEM receives security telemetry from multiple zones through OPNsense.
+
+Monitored endpoints include:
+
+- `LAB-WIN-01`
+- `LAB-UBUNTU-01`
+- `LAB-DC-01`
+- `LAB-DMZ-01`
+
+SOCNET also receives Suricata telemetry generated by OPNsense.
+
+---
+
+# LAB-DC-01
+
+## Purpose
+
+`LAB-DC-01` provides enterprise identity services.
+
+Services include:
+
+- Active Directory Domain Services
+- DNS
+- Kerberos
+- LDAP
+- Group Policy
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: AD-NET
+
+## Addressing
+
+    IP: 10.10.50.10
+    Gateway: 10.10.50.1
+    Zone: ADNET
+
+Identity infrastructure is intentionally separated from the corporate workstation network.
+
+CORPNET reaches ADNET only through required domain protocols.
+
+---
+
+# LAB-DMZ-01
+
+## Purpose
+
+`LAB-DMZ-01` represents an externally exposed Linux web server.
+
+It hosts Nginx and is monitored by Wazuh.
+
+## VirtualBox Network
+
+    Adapter 1
+    Mode: Internal Network
+    Network: DMZ-NET
+
+All other adapters are disabled.
+
+## Addressing
+
+    IP: 10.10.60.10
+    Gateway: 10.10.60.1
+    DNS: 10.10.60.1
+    Zone: DMZ
+
+The host is deliberately prevented from having direct connections to internal networks.
+
+All traffic passes through OPNsense.
+
+---
+
+# Why Internal Networks Are Used
+
+VirtualBox Internal Networks were selected instead of Host-Only networking for the final architecture because they better simulate isolated enterprise security zones.
+
+Internal Networks provide:
+
+- Layer 2 isolation
+- no automatic host connectivity
+- no automatic DHCP unless explicitly provided
+- controlled routing through OPNsense
+- realistic firewall enforcement
+
+A system in one Internal Network cannot directly communicate with another Internal Network without a router.
+
+In this lab, that router is:
 
 `LAB-FW-01`
 
-has direct VirtualBox NAT connectivity.
-
-This makes OPNsense the mandatory security gateway.
+This creates a realistic enforcement point for security policy.
 
 ---
 
-## 20. Final Internet Paths
+# Internet Connectivity
 
-### Kali
+The lab uses VirtualBox NAT only on the OPNsense WAN interface.
 
-`10.10.10.10`
+The endpoint machines do not require their own NAT adapters.
 
-↓
+Traffic flow is:
 
-`10.10.10.1`
+    Endpoint
+       |
+       v
+    Internal Network
+       |
+       v
+    LAB-FW-01
+       |
+       v
+    VirtualBox NAT
+       |
+       v
+    Internet
 
-↓
-
-`OPNsense`
-
-↓
-
-`WAN`
-
-↓
-
-`VirtualBox NAT`
-
-↓
-
-`Internet`
+This allows OPNsense to control and observe outbound connectivity.
 
 ---
 
-### Windows
+# DNS Architecture
 
-`10.10.20.20`
+DNS requirements differ between zones.
 
-↓
+## CORPNET
 
-`10.10.20.1`
+The Windows workstation relies on Active Directory DNS through `LAB-DC-01`.
 
-↓
+This is necessary for:
 
-`OPNsense`
+- domain discovery
+- Active Directory authentication
+- Kerberos
+- Group Policy
+- service discovery
 
-↓
+## DMZ
 
-`WAN`
+`LAB-DMZ-01` uses:
 
-↓
+`10.10.60.1`
 
-`VirtualBox NAT`
+as its configured DNS resolver.
 
-↓
-
-`Internet`
-
----
-
-### Ubuntu
-
-`10.10.30.30`
-
-↓
-
-`10.10.30.1`
-
-↓
-
-`OPNsense`
-
-↓
-
-`WAN`
-
-↓
-
-`VirtualBox NAT`
-
-↓
-
-`Internet`
+OPNsense provides approved DNS forwarding for the DMZ.
 
 ---
 
-## 21. Outbound NAT
+# Network Segmentation
 
-OPNsense uses:
-
-`Automatic Source NAT rule generation`
-
-Automatically generated rules include:
-
-- REDNET
-- CORPNET
-- SERVERNET
-
-Traffic from the internal networks is translated to the OPNsense WAN address before leaving the firewall.
-
-This allows Internet access without giving the internal VMs their own direct NAT adapters.
-
----
-
-## 22. Routing Between Security Zones
-
-The internal networks are directly connected to OPNsense.
-
-Routes include:
-
-`10.10.10.0/24 → REDNET`
-
-`10.10.20.0/24 → CORPNET`
-
-`10.10.30.0/24 → SERVERNET`
-
-Traffic between these networks must therefore pass through OPNsense.
-
-This allows firewall rules to control inter-zone communication.
-
----
-
-## 23. REDNET Routing
-
-Kali uses:
-
-`10.10.10.1`
-
-as its default gateway.
-
-Traffic to:
-
-- CORPNET
-- SERVERNET
-- Internet
-
-therefore reaches OPNsense first.
-
-Firewall policy decides whether the traffic is permitted.
-
----
-
-## 24. CORPNET Routing
-
-Windows uses:
-
-`10.10.20.1`
-
-as its sole IPv4 default gateway.
-
-Traffic destined for:
-
-- SERVERNET
-- REDNET
-- Internet
-
-is routed through OPNsense.
-
-This allows Windows administrative access to be controlled centrally.
-
----
-
-## 25. SERVERNET Routing
-
-Ubuntu uses:
-
-`10.10.30.1`
-
-as its default gateway.
-
-Traffic attempting to leave SERVERNET therefore crosses OPNsense.
-
-This is important because SERVERNET is intentionally prevented from initiating unrestricted connections toward CORPNET and REDNET.
-
----
-
-## 26. Security-Zone Isolation
-
-VirtualBox Internal Networks provide Layer 2 separation.
-
-The three internal networks are:
-
-`RED-NET`
-
-`CORP-NET`
-
-`SERVER-NET`
-
-A VM connected only to RED-NET cannot directly communicate at Layer 2 with a VM connected only to CORP-NET.
-
-Any Layer 3 communication between them must be routed through OPNsense.
-
-This provides both:
-
-- VirtualBox network isolation
-- OPNsense firewall enforcement
-
----
-
-## 27. REDNET Security Role
-
-RED-NET contains systems used for offensive-security testing.
-
-Current system:
-
-`LAB-KALI-01`
-
-Network:
-
-`10.10.10.0/24`
-
-The network is treated as an untrusted internal security zone.
-
-REDNET cannot directly access CORPNET.
-
-Firewall management access from REDNET is blocked.
-
-Controlled access to approved SERVERNET targets is permitted.
-
----
-
-## 28. CORPNET Security Role
-
-CORP-NET represents the trusted endpoint and management environment.
-
-Current system:
-
-`LAB-WIN-01`
-
-Network:
-
-`10.10.20.0/24`
-
-Windows uses CORPNET to:
-
-- Manage OPNsense
-- Reach approved SERVERNET administration services
-- Access the Internet
-- Perform defensive-security exercises
-
-CORPNET does not receive unrestricted access to REDNET.
-
----
-
-## 29. SERVERNET Security Role
-
-SERVER-NET represents the protected server environment.
-
-Current system:
-
-`LAB-UBUNTU-01`
-
-Network:
-
-`10.10.30.0/24`
-
-SERVERNET is designed for:
-
-- Linux servers
-- Internal services
-- Web applications
-- Security targets
-- Protected workloads
-
-Systems on SERVERNET cannot initiate unrestricted communication toward CORPNET or REDNET.
-
----
-
-## 30. Validated Network Paths
-
-The following network paths were validated.
-
-### Windows to OPNsense
-
-`10.10.20.20 → 10.10.20.1:443`
-
-Result:
-
-`ALLOW`
-
----
-
-### Windows to Ubuntu
-
-`10.10.20.20 → 10.10.30.30:22`
-
-Result:
-
-`ALLOW`
-
----
-
-### Windows to Kali
-
-`10.10.20.20 → 10.10.10.10`
-
-Result:
-
-`BLOCK`
-
----
-
-### Kali to Ubuntu
-
-`10.10.10.10 → 10.10.30.30`
-
-Result:
-
-`ALLOW`
-
----
-
-### Kali to Windows
-
-`10.10.10.10 → 10.10.20.20`
-
-Result:
-
-`BLOCK`
-
----
-
-### Kali to OPNsense HTTPS
-
-`10.10.10.10 → 10.10.10.1:443`
-
-Result:
-
-`BLOCK`
-
----
-
-### Ubuntu to Windows
-
-`10.10.30.30 → 10.10.20.20`
-
-Result:
-
-`BLOCK`
-
----
-
-### Ubuntu to Kali
-
-`10.10.30.30 → 10.10.10.10`
-
-Result:
-
-`BLOCK`
-
----
-
-## 31. Internet Connectivity Validation
-
-Internet access was tested from all three internal systems after disabling their direct NAT adapters.
-
-### Kali
-
-Tests included:
-
-`ping 1.1.1.1`
-
-`nslookup opnsense.org 10.10.10.1`
-
-`curl -I https://example.com`
-
-Result:
-
-`PASS`
-
----
-
-### Windows
-
-Tests included:
-
-`ping 1.1.1.1`
-
-`Resolve-DnsName opnsense.org -Server 10.10.20.1`
-
-`curl.exe -I https://example.com`
-
-Result:
-
-`PASS`
-
----
-
-### Ubuntu
-
-Tests included:
-
-`ping 1.1.1.1`
-
-`nslookup opnsense.org 10.10.30.1`
-
-`curl -I https://example.com`
-
-Result:
-
-`PASS`
-
----
-
-## 32. DNS Architecture
-
-Each internal system uses its local OPNsense zone address as DNS.
-
-Kali:
-
-`10.10.10.1`
-
-Windows:
-
-`10.10.20.1`
-
-Ubuntu:
-
-`10.10.30.1`
-
-This provides centrally controlled DNS access through the firewall.
-
----
-
-## 33. Firewall Management Network
-
-OPNsense management is performed from CORPNET.
-
-Management workstation:
-
-`10.10.20.20`
-
-Firewall management address:
-
-`10.10.20.1`
-
-Protocol:
-
-`HTTPS`
-
-Port:
-
-`443`
-
-The REDNET attacker workstation cannot access the OPNsense Web GUI.
-
----
-
-## 34. Legacy LAB-NET
-
-The old network:
-
-`LAB-NET`
-
-with subnet:
-
-`192.168.56.0/24`
-
-is no longer part of the active architecture.
-
-Its purpose was originally to allow direct communication between:
-
-- Kali
-- Windows
-- Ubuntu
-
-It was retired after the segmented OPNsense architecture became operational.
-
-The previous addresses remain useful as historical documentation of the lab's development.
-
----
-
-## 35. Migration Strategy
-
-The migration was performed gradually to reduce the risk of losing connectivity.
-
-The process included:
-
-1. Deploy OPNsense.
-2. Configure four firewall interfaces.
-3. Create security zones.
-4. Configure firewall aliases.
-5. Build CORPNET firewall policy.
-6. Build REDNET firewall policy.
-7. Build SERVERNET firewall policy.
-8. Keep direct NAT adapters temporarily.
-9. Move Kali to REDNET.
-10. Move Ubuntu to SERVERNET.
-11. Configure Windows on CORPNET.
-12. Validate inter-zone traffic.
-13. Validate OPNsense outbound NAT.
-14. Force test traffic through OPNsense.
-15. Create pre-cutover snapshots.
-16. Change default gateways to OPNsense.
-17. Disable direct NAT adapters one VM at a time.
-18. Reboot and verify connectivity.
-19. Disable old LAB-NET connectivity.
-20. Disable OPNsense default LAN allow rules.
-21. Validate explicit firewall policies.
-22. Create post-cutover snapshots and backups.
-
-This staged migration reduced the risk of losing all management access simultaneously.
-
----
-
-## 36. Snapshot Strategy
-
-VirtualBox snapshots were used throughout the network migration.
-
-Snapshots were created:
-
-- Before major networking changes
-- Before security-zone migration
-- Before disabling NAT adapters
-- After successful final cutovers
-- After firewall policy validation
+Because each VirtualBox Internal Network is isolated, OPNsense becomes the enforcement point for east-west communication.
 
 Examples include:
 
-`Kali - Pre OPNsense REDNET Migration`
+    REDNET → DMZ
+    CORPNET → ADNET
+    SERVERNET → SOCNET
+    ADNET → SOCNET
+    DMZ → SOCNET
 
-`Kali - REDNET Policy Verified Pre Final Cutover`
-
-`Kali - REDNET Final Cutover Verified`
-
-`Ubuntu - Pre OPNsense SERVERNET Migration`
-
-`Ubuntu - SERVERNET Policy Verified Pre Final Cutover`
-
-`Ubuntu - SERVERNET Final Cutover Verified`
-
-`Windows - CORPNET Policy Verified Pre Final Cutover`
-
-`Windows - CORPNET Final Cutover Verified`
-
-These snapshots provide recovery points if future networking changes cause problems.
+Traffic cannot bypass OPNsense by communicating directly at Layer 2.
 
 ---
 
-## 37. OPNsense Recovery
+# Validated REDNET Controls
 
-OPNsense configuration backups are exported after important configuration milestones.
+`LAB-KALI-01` was used to validate the offensive network boundary.
 
-These backups include firewall and network configuration.
+Validated results:
 
-The XML configuration files are stored privately and are not committed to the public GitHub repository.
+    REDNET → DMZ HTTP/80       ALLOWED
+    REDNET → DMZ SSH/22        BLOCKED
+    REDNET → CORPNET SMB/445   BLOCKED
+    REDNET → ADNET LDAP/389    BLOCKED
 
-VirtualBox snapshots provide an additional recovery mechanism.
-
----
-
-## 38. Current Network Status
-
-| Component | Status |
-|---|---|
-| VirtualBox NAT | 🟢 OPNsense WAN only |
-| OPNsense WAN | 🟢 Operational |
-| CORP-NET | 🟢 Operational |
-| RED-NET | 🟢 Operational |
-| SERVER-NET | 🟢 Operational |
-| LAB-NET | 🔴 Retired |
-| Kali Direct NAT | 🔴 Disabled |
-| Windows Direct NAT | 🔴 Disabled |
-| Ubuntu Direct NAT | 🔴 Disabled |
-| Inter-Zone Routing | 🟢 Operational |
-| Outbound NAT | 🟢 Operational |
-| DNS | 🟢 Operational |
-| Internet Access | 🟢 Operational |
-| Firewall Segmentation | 🟢 Verified |
+This confirms that the Kali attack workstation is isolated from sensitive infrastructure while retaining the intended web-testing path to the DMZ.
 
 ---
 
-## 39. Future VirtualBox Networks
+# Validated CORPNET Controls
 
-As the laboratory expands, additional Internal Networks may be introduced.
+From `LAB-WIN-01`:
 
-### SOC-NET
+    CORPNET → ADNET DNS/53        ALLOWED
+    CORPNET → ADNET Kerberos/88   ALLOWED
+    CORPNET → ADNET LDAP/389      ALLOWED
+    CORPNET → SOCNET Wazuh/1514   ALLOWED
+    CORPNET → DMZ SSH/22          ALLOWED
 
-Possible subnet:
-
-`10.10.40.0/24`
-
-Potential systems:
-
-- Wazuh
-- SIEM
-- Log collection
-- Monitoring systems
+The DMZ SSH rule is restricted specifically to the approved administrative workstation.
 
 ---
 
-### AD-NET
+# Validated SERVERNET Controls
 
-Possible subnet:
+From `LAB-UBUNTU-01`:
 
-`10.10.50.0/24`
+    SERVERNET → SOCNET Wazuh/1514   ALLOWED
+    SERVERNET → CORPNET SMB/445     BLOCKED
+    SERVERNET → DMZ SSH/22          BLOCKED
 
-Potential systems:
-
-- Windows Server
-- Active Directory
-- Domain Controller
-- Domain-joined clients
+This limits unnecessary lateral movement from the internal server environment.
 
 ---
 
-### DMZ-NET
+# Validated ADNET Controls
 
-Possible subnet:
+From `LAB-DC-01`:
 
-`10.10.60.0/24`
+    ADNET → SOCNET Wazuh/1514   ALLOWED
+    ADNET → DMZ SSH/22          BLOCKED
 
-Potential systems:
-
-- Web servers
-- Vulnerable applications
-- Public-facing test services
-
-Each network will be connected to OPNsense and protected by explicit firewall policy.
+The Domain Controller is not used as a jump host or general management workstation.
 
 ---
 
-## 40. Planned Monitoring Architecture
+# Validated DMZ Controls
 
-Future traffic monitoring may include:
+From `LAB-DMZ-01`:
 
-Kali Attack Traffic
-|
-v
-RED-NET
-|
-v
-OPNsense
-|
-+---- Firewall Logs
-|
-+---- Suricata IDS/IPS
-|
-v
-SERVER-NET Target
-|
-v
-Security Telemetry
-|
-v
-SOC-NET
-|
-v
-Wazuh / SIEM
+    DMZ → SOCNET Wazuh/1514   ALLOWED
+    DMZ → CORPNET SMB/445     BLOCKED
+    DMZ → ADNET LDAP/389      BLOCKED
+    DMZ → Internet HTTPS      ALLOWED
 
-This will allow attack activity to be generated on REDNET and observed by defensive systems.
+The architecture therefore prevents the DMZ server from freely initiating connections into protected enterprise networks.
 
 ---
 
-## 41. Network Security Benefits
+# Suricata Placement
 
-The current VirtualBox architecture provides several important benefits.
+Suricata runs on OPNsense.
 
-### Isolation
+The REDNET-facing interface is monitored to provide visibility into traffic generated by the offensive workstation.
 
-Offensive-security systems are separated from management systems.
+The monitored OPNsense interface is:
 
-### Centralized Policy
+`em2`
 
-OPNsense controls communication between networks.
-
-### Visibility
-
-Traffic crossing zones can be logged.
-
-### Realistic Routing
-
-Internal systems use dedicated gateways rather than communicating on one flat subnet.
-
-### Controlled Attack Paths
-
-Kali can reach specifically authorized targets without receiving unrestricted access to the entire lab.
-
-### Reduced Bypass Risk
-
-Internal VMs cannot bypass OPNsense using direct NAT adapters.
-
-### Scalability
-
-Additional enterprise-style security zones can be added later.
+This allows attack-simulation traffic from Kali to be inspected before reaching target environments.
 
 ---
 
-## 42. Final Networking Milestone
+# Suricata Telemetry Path
 
-The VirtualBox environment has evolved from:
+The network telemetry path is:
 
-Flat VM Network
+    LAB-KALI-01
+         |
+         v
+    RED-NET
+         |
+         v
+    LAB-FW-01 / Suricata
+         |
+         v
+    EVE JSON
+         |
+         v
+    Remote Syslog UDP/5514
+         |
+         v
+    LAB-SIEM-01
+         |
+         v
+    /var/log/suricata/eve.json
+         |
+         v
+    Wazuh
 
-↓
+A controlled REDNET-to-DMZ test successfully triggered:
 
-Shared LAB-NET
+    Suricata SID 2100498
+    GPL ATTACK_RESPONSE id check returned root
 
-↓
+The resulting event was subsequently processed by Wazuh rule:
 
-Multiple Direct NAT Connections
-
-↓
-
-OPNsense Deployment
-
-↓
-
-Dedicated Internal Networks
-
-↓
-
-Security-Zone Segmentation
-
-↓
-
-Mandatory Firewall Routing
-
-↓
-
-Explicit Firewall Policy
-
-↓
-
-Validated Offensive and Defensive Network Paths
-
-The networking foundation is now ready for more advanced cybersecurity infrastructure.
+`86601`
 
 ---
 
-## 43. Next Development Phase
+# DMZ Administrative Architecture
 
-The next networking and security improvements will include:
+The approved administrative path is:
 
-- Professional network diagram
-- SOC-NET deployment
-- Wazuh SIEM
-- Centralized logging
-- OPNsense log forwarding
-- Windows telemetry
-- Linux telemetry
-- Sysmon
-- Suricata IDS
-- Suricata IPS experimentation
-- Active Directory
-- DMZ architecture
-- Vulnerable application targets
-- Detection engineering
-- Incident-response exercises
-- Threat hunting
-- Attack simulation
-- Network packet analysis
+    LAB-WIN-01
+    10.10.20.20
+         |
+         | TCP/22
+         v
+    LAB-FW-01
+         |
+         v
+    LAB-DMZ-01
+    10.10.60.10
 
-The current segmented VirtualBox architecture provides the foundation for these capabilities.
+REDNET is not allowed to use SSH to reach the DMZ server.
+
+ADNET is also prevented from using the Domain Controller as a DMZ administration system.
+
+This maintains separation between:
+
+- offensive activity
+- identity infrastructure
+- system administration
 
 ---
 
-## Security Disclaimer
+# DMZ SSH Hardening
 
-This VirtualBox network architecture is used exclusively for authorized cybersecurity education, ethical hacking, defensive-security training, and incident-response exercises.
+The network restriction is reinforced by host-level SSH controls.
 
-All offensive-security traffic is generated only against systems that I own or have explicit authorization to test.
+Effective SSH policy on `LAB-DMZ-01`:
 
-No unauthorized external systems, networks, services, applications, accounts, or organizations are targeted.
+    PermitRootLogin no
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+
+Public-key authentication was verified from `LAB-WIN-01`.
+
+Password-only authentication was separately tested and rejected.
+
+---
+
+# Monitoring Architecture
+
+The network design supports multiple monitoring paths.
+
+## Wazuh Endpoint Telemetry
+
+    LAB-WIN-01
+         |
+         v
+    LAB-SIEM-01
+
+    LAB-UBUNTU-01
+         |
+         v
+    LAB-SIEM-01
+
+    LAB-DC-01
+         |
+         v
+    LAB-SIEM-01
+
+    LAB-DMZ-01
+         |
+         v
+    LAB-SIEM-01
+
+Primary agent communication:
+
+`TCP/1514`
+
+Enrollment:
+
+`TCP/1515`
+
+---
+
+# Application Monitoring
+
+Nginx activity on `LAB-DMZ-01` is collected through:
+
+`/var/log/nginx/access.log`
+
+and:
+
+`/var/log/nginx/error.log`
+
+This creates an additional application-layer telemetry source independent of Suricata network monitoring.
+
+---
+
+# VirtualBox Security Advantages
+
+The final design provides several advantages for cybersecurity training.
+
+## Isolation
+
+Attack traffic remains inside the controlled virtual environment.
+
+## Repeatability
+
+Virtual machines can be returned to known-good states using snapshots.
+
+## Segmentation
+
+Every security zone is independently controlled.
+
+## Visibility
+
+Traffic must cross the firewall, creating opportunities for logging and IDS inspection.
+
+## Flexibility
+
+New scenarios can be introduced without requiring physical hardware.
+
+## Safety
+
+The offensive workstation does not have unrestricted access to the host or protected networks.
+
+---
+
+# Snapshot Strategy
+
+Snapshots were created before major networking and security changes throughout the infrastructure build.
+
+Examples included:
+
+- network segmentation changes
+- Suricata deployment
+- Active Directory firewall rules
+- DMZ deployment
+- web exposure
+- SSH administration
+- endpoint-monitoring configuration
+
+After the infrastructure was fully validated, obsolete build snapshots were removed.
+
+Every VM now retains only:
+
+`Final-Six-Zone-Validated-Baseline`
+
+This provides a clean common rollback point for future SOC and Purple Team exercises.
+
+---
+
+# Final VirtualBox Topology
+
+    Internet
+       |
+       |
+    VirtualBox NAT
+       |
+       v
+    +---------------------+
+    |      LAB-FW-01      |
+    |      OPNsense       |
+    | Firewall / Routing  |
+    |    Suricata IDS     |
+    +---------------------+
+       |      |      |      |      |      |
+       |      |      |      |      |      |
+       v      v      v      v      v      v
+
+    RED    CORP   SERVER   SOC     AD     DMZ
+    NET     NET     NET     NET    NET    NET
+
+     |       |       |       |      |      |
+     v       v       v       v      v      v
+
+    KALI   WIN-01  UBUNTU   SIEM    DC    NGINX
+    .10     .20      .30     .10    .10    .10
+
+---
+
+# Final Status
+
+The VirtualBox network architecture is complete and validated.
+
+The environment now provides:
+
+- six isolated security zones
+- centralized OPNsense routing
+- least-privilege firewall enforcement
+- controlled Internet access
+- Active Directory segmentation
+- restricted administrative paths
+- isolated offensive infrastructure
+- dedicated DMZ
+- centralized Wazuh monitoring
+- Suricata network visibility
+- application-layer web monitoring
+
+Future project work will use this architecture for realistic SOC investigations and Purple Team simulations rather than continuing to modify the underlying network design.
