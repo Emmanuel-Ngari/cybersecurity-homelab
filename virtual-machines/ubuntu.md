@@ -1,489 +1,819 @@
-# Ubuntu Server — LAB-UBUNTU-01
+# LAB-UBUNTU-01 — Internal Linux Server
 
-## 1. Overview
+## Overview
 
-Ubuntu Server is one of the core systems in my cybersecurity homelab.
+This document records the complete lifecycle of the Ubuntu Server system used throughout the Cybersecurity Home Lab, from the original flat-network environment through its final role as `LAB-UBUNTU-01` in the segmented six-zone architecture.
 
-The server is used to develop practical Linux administration, networking, system security, logging, SSH, hardening, monitoring, and defensive security skills.
+Ubuntu Server has been part of the project since the earliest practical security exercises.
 
-It also provides a Linux server target for authorized security testing from Kali Linux.
+Its role evolved from a simple Linux target used for SSH, Nmap, Hydra, and fail2ban testing into a monitored internal server integrated with:
 
----
-
-## 2. System Role
-
-**Hostname:** `lab-ubuntu-01`
-
-**Operating System:** Ubuntu Server 26.04.1 LTS
-
-**Primary Role:** Linux Server / Defensive Security
-
-**LAB-NET IP Address:** `192.168.56.30/24`
-
-Ubuntu acts as the Linux server within the isolated cybersecurity laboratory.
-
----
-
-## 3. Network Interfaces
-
-Ubuntu Server uses two network interfaces.
-
-| Interface | Network | IP Address | Purpose |
-|---|---|---|---|
-| `enp0s3` | NAT | `10.0.2.15/24` | Internet connectivity |
-| `enp0s8` | LAB-NET | `192.168.56.30/24` | Isolated laboratory communication |
-
-The two-interface design separates Internet access from laboratory communication.
-
----
-
-## 4. NAT Interface
-
-The NAT interface is:
-
-`enp0s3`
-
-The interface provides Internet connectivity to the Ubuntu Server.
-
-**IPv4 Address:** `10.0.2.15/24`
-
-**Default Gateway:** `10.0.2.2`
-
-The NAT connection can be used for:
-
-- System updates
-- Package installation
-- Downloading legitimate security tools
-- Installing required dependencies
-- Accessing learning resources
-
----
-
-## 5. LAB-NET Interface
-
-The isolated laboratory interface is:
-
-`enp0s8`
-
-**IPv4 Address:** `192.168.56.30/24`
-
-**Network:** `192.168.56.0/24`
-
-**Default Gateway:** None
-
-The interface provides communication with the other laboratory systems.
-
-### Laboratory Hosts
-
-| System | LAB-NET Address | Role |
-|---|---|---|
-| Kali Linux | `192.168.56.10` | Offensive Security |
-| Windows 11 | `192.168.56.20` | Windows Endpoint |
-| Ubuntu Server | `192.168.56.30` | Linux Server |
-
----
-
-## 6. Initial Network Configuration
-
-The Ubuntu LAB-NET interface initially did not have the required IPv4 address.
-
-The interface was manually assigned:
-
-`192.168.56.30/24`
-
-using the Linux `ip` command.
-
-The resulting routing information included:
-
-`192.168.56.0/24 dev enp0s8`
-
-This confirmed that Ubuntu had a connected route to the isolated LAB-NET network.
-
-The manual configuration was initially temporary and will later be converted into a persistent Netplan configuration.
-
----
-
-## 7. Network Routing
-
-Ubuntu uses separate network paths for Internet and laboratory communication.
-
-### Default Route
-
-The default route uses the NAT interface:
-
-`default via 10.0.2.2`
-
-### LAB-NET Route
-
-The isolated network uses:
-
-`192.168.56.0/24 dev enp0s8`
-
-This design prevents the LAB-NET interface from becoming the default Internet route.
-
-It also provides a clear separation between external connectivity and internal laboratory traffic.
-
----
-
-## 8. Connectivity Testing
-
-Connectivity was tested after configuring the LAB-NET interface.
-
-### Ubuntu → Kali
-
-Source:
-
-`192.168.56.30`
-
-Destination:
-
-`192.168.56.10`
-
-**Result:** Successful
-
-### Ubuntu → Windows
-
-Source:
-
-`192.168.56.30`
-
-Destination:
-
-`192.168.56.20`
-
-**Result:** Successful
-
-### Ubuntu → NAT Gateway
-
-Source:
-
-`10.0.2.15`
-
-Destination:
-
-`10.0.2.2`
-
-**Result:** Successful
-
-These tests confirmed that Ubuntu could communicate with the laboratory systems and reach the NAT gateway.
-
----
-
-## 9. SSH Service
-
-SSH is enabled on the Ubuntu Server.
-
-**Service:** OpenSSH Server
-
-**Port:** `22/TCP`
-
-SSH provides remote administration and will also be useful for cybersecurity exercises.
-
-Planned SSH security activities include:
-
-- SSH configuration
-- Authentication analysis
-- Failed login investigation
-- SSH hardening
-- Key-based authentication
-- Log analysis
-- Brute-force detection
-- Fail2ban configuration
-
-SSH will only be exposed within the controlled laboratory environment unless intentionally configured otherwise.
-
----
-
-## 10. Linux Security Role
-
-Ubuntu Server will be used to develop Linux defensive security skills.
-
-Planned activities include:
-
-### System Hardening
-
-- User account security
-- Least privilege
-- File permissions
-- SSH hardening
-- Service management
-- Package management
-- System updates
-
-### Monitoring
-
-- Authentication logs
-- System logs
-- Process monitoring
-- Network connections
-- Running services
-- Resource usage
-
-### Security Tools
-
-Future exercises may include:
-
-- Fail2ban
-- UFW
+- OPNsense
+- SERVERNET segmentation
+- Wazuh
 - auditd
-- Linux auditing
-- Log analysis tools
-- Network monitoring tools
+- custom Linux detections
+- centralized SOC monitoring
+
+Final host:
+
+`LAB-UBUNTU-01`
+
+Final address:
+
+`10.10.30.30`
+
+Final zone:
+
+`SERVERNET`
+
+Primary role:
+
+Protected internal Linux server
 
 ---
 
-## 11. Offensive Security Testing
+# Phase 1 — Original Ubuntu Lab Server
 
-Kali Linux will be used for authorized security testing against the Ubuntu Server.
+The earliest version of the lab used Ubuntu Server on:
 
-Planned exercises include:
+`192.168.56.0/24`
 
-- Host discovery
-- Port scanning
-- Service enumeration
-- SSH enumeration
-- Vulnerability assessment
-- Authentication security testing
-- Controlled exploitation
-- Privilege escalation
-- Post-exploitation analysis
+Original Ubuntu address:
 
-All offensive security activities will remain inside the controlled homelab.
+`192.168.56.30`
 
----
+The other major systems included:
 
-## 12. Defensive Security Exercises
+- Kali — `192.168.56.10`
+- Windows — `192.168.56.20`
 
-Ubuntu will also serve as a defensive security training platform.
+At this stage, Ubuntu served as the primary Linux target system.
 
-Planned exercises include:
+It was used to learn and validate:
 
-- Monitoring authentication attempts
-- Investigating SSH logs
-- Detecting suspicious processes
-- Monitoring network connections
-- Hardening unnecessary services
-- Configuring firewall rules
-- Detecting brute-force activity
-- Investigating suspicious user activity
-- Reviewing system logs
-- Performing incident-response exercises
-
-The objective is to understand how Linux systems can be protected, monitored, investigated, and recovered.
-
----
-
-## 13. Useful Linux Commands
-
-The following commands are useful for Ubuntu administration and security investigations.
-
-### Display System Information
-
-`uname -a`
-
-### Display IP Addresses
-
-`ip addr`
-
-### Display Routing Table
-
-`ip route`
-
-### Display Network Interfaces
-
-`ip link`
-
-### Test Connectivity to Kali
-
-`ping -c 4 192.168.56.10`
-
-### Test Connectivity to Windows
-
-`ping -c 4 192.168.56.20`
-
-### Test NAT Gateway
-
-`ping -c 4 10.0.2.2`
-
-### Display Listening Services
-
-`sudo ss -tulnp`
-
-### Check SSH Service
-
-`sudo systemctl status ssh`
-
-### Display Running Services
-
-`systemctl --type=service --state=running`
-
-### Display Processes
-
-`ps aux`
-
-### Monitor Processes
-
-`top`
-
-### Check Disk Usage
-
-`df -h`
-
-### Check Memory Usage
-
-`free -h`
-
-### View System Logs
-
-`journalctl`
-
-### View Recent Authentication Activity
-
-`last`
-
-These commands will form part of the Linux administration and security investigation workflow.
-
----
-
-## 14. Evidence Collection
-
-Evidence from Ubuntu security exercises will be documented using:
-
-- Terminal output
-- Linux command output
-- Network configuration
-- Routing tables
-- SSH configuration
-- System logs
-- Authentication logs
-- Service information
-- Firewall configuration
-- Security testing results
-- Remediation results
-- Screenshots
-
-Screenshots and command output will be reviewed before being uploaded to GitHub.
-
-Sensitive information will not be committed.
-
----
-
-## 15. Security Considerations
-
-Ubuntu has two network interfaces.
-
-The NAT interface provides Internet connectivity while LAB-NET provides isolated communication with the cybersecurity laboratory.
-
-Security configuration must therefore be carefully controlled.
-
-The following information must never be committed to the repository:
-
-- Passwords
-- Private keys
-- SSH keys
-- API keys
-- Authentication tokens
-- Recovery codes
-- Sensitive personal information
-- Secrets stored in configuration files
-
-Only authorized laboratory systems will be targeted during security testing.
-
----
-
-## 16. Future Improvements
-
-Planned improvements for the Ubuntu environment include:
-
-- Persistent Netplan configuration
-- SSH hardening
-- UFW firewall configuration
-- Fail2ban
-- Linux auditing
-- Centralized logging
-- SIEM integration
-- Security monitoring
-- File integrity monitoring
-- Vulnerability management
-- Detection engineering
-- Incident response exercises
-- Linux privilege escalation labs
-- Server hardening exercises
-
----
-
-## 17. Lessons Learned
-
-Configuring Ubuntu Server provided practical experience with:
-
-- Linux networking
-- Network interfaces
-- Static IPv4 addressing
-- Routing
-- VirtualBox networking
+- Linux administration
 - SSH
-- Linux services
-- System administration
-- Network troubleshooting
-- Linux security
+- service exposure
+- Nmap enumeration
+- authentication testing
+- Hydra
+- fail2ban
+- attacker/defender interaction
 
-An important lesson was that Linux networking can be configured temporarily using commands such as `ip`, but persistent configuration should be managed through the operating system's network configuration system.
-
-The next stage is to convert the temporary LAB-NET address into a persistent Netplan configuration.
-
----
-
-## 18. Current Status
-
-**Status:** 🟡 Operational — Network Configuration Being Finalized
-
-Ubuntu Server is currently connected to:
-
-- NAT for Internet connectivity
-- LAB-NET for isolated cybersecurity activities
-
-Current LAB-NET address:
-
-`192.168.56.30/24`
-
-Connectivity to Kali Linux, Windows 11, and the NAT gateway has been successfully tested.
-
-The LAB-NET address is currently configured manually and will be made persistent using Netplan.
+This was one of the earliest practical security components of the lab.
 
 ---
 
-## 19. Planned Blue Team Integration
+# Early SSH Configuration
 
-Ubuntu will become an important Linux telemetry source as the homelab develops.
+SSH was enabled on the Ubuntu server so it could be administered remotely and used as a target for controlled security testing.
 
-Future defensive architecture may include:
+Kali was used to:
 
-Ubuntu Server  
-↓  
-Authentication Logs  
-↓  
-System Logs  
-↓  
-Log Collection  
-↓  
-SIEM  
-↓  
-Detection Rules  
-↓  
-Security Alert  
-↓  
-Investigation  
-↓  
-Incident Response
+- identify TCP/22
+- connect to the SSH service
+- enumerate the host
+- generate authentication failures
 
-This will provide practical experience with Linux monitoring, threat detection, SOC operations, and incident response.
+This provided a practical environment for understanding the relationship between:
+
+- network services
+- authentication
+- logging
+- defensive controls
 
 ---
 
-## 20. Security Disclaimer
+# Nmap Testing
 
-Ubuntu Server is used exclusively for authorized cybersecurity training and experimentation within my controlled laboratory environment.
+Kali used Nmap against the Ubuntu server.
 
-All offensive security testing is performed only against systems that I own or have explicit authorization to test.
+An early observation showed:
 
-No unauthorized systems, networks, accounts, or organizations are targeted.
+`22/tcp open`
+
+This confirmed that:
+
+- the host was reachable
+- SSH was listening
+- network communication was functioning
+
+Nmap became one of the first tools used to validate changes in the server’s security posture.
+
+---
+
+# Hydra Authentication Testing
+
+Hydra was used for controlled SSH authentication testing against Ubuntu.
+
+The objective was not simply password guessing.
+
+The exercise was used to understand:
+
+- repeated authentication failures
+- SSH logging
+- automated defense
+- attacker IP blocking
+- how service state appears from the attacker side
+
+This became an early Purple Team-style workflow.
+
+---
+
+# fail2ban Deployment
+
+fail2ban was configured on Ubuntu to protect SSH from repeated failed authentication attempts.
+
+Kali then generated controlled repeated failures.
+
+The defensive response was observed.
+
+After fail2ban acted, Nmap or subsequent connection attempts showed the SSH port as:
+
+`filtered`
+
+rather than openly reachable.
+
+This was an important early lesson.
+
+The security workflow became:
+
+    Kali Attack
+        |
+        v
+    SSH Authentication Failures
+        |
+        v
+    Ubuntu Logs
+        |
+        v
+    fail2ban
+        |
+        v
+    Source IP Blocked
+        |
+        v
+    Kali Retest
+
+This was one of the earliest complete attack-detect-block-verify cycles in the project.
+
+---
+
+# Importance of the Early Ubuntu Phase
+
+The original Ubuntu server helped establish several principles that continued throughout the entire lab:
+
+- test security controls from the attacker perspective
+- validate actual network behaviour
+- observe logs
+- compare before and after states
+- do not assume a configuration works because it was saved
+- retest after defensive changes
+
+These same ideas later guided:
+
+- OPNsense validation
+- Wazuh detection engineering
+- Suricata testing
+- DMZ validation
+- Active Directory segmentation
+
+---
+
+# Transition Away from the Flat Network
+
+The original `192.168.56.0/24` lab was useful for foundational learning, but it lacked realistic security boundaries.
+
+Ubuntu could communicate too freely with other systems.
+
+As the lab matured, the server needed to be separated from:
+
+- attacker infrastructure
+- corporate workstations
+- SOC infrastructure
+- identity services
+
+This led to the introduction of SERVERNET.
+
+---
+
+# Rebuild into LAB-UBUNTU-01
+
+The Linux server was rebuilt and standardized as:
+
+`LAB-UBUNTU-01`
+
+Its final network became:
+
+`SERVERNET`
+
+Network:
+
+`10.10.30.0/24`
+
+Gateway:
+
+`10.10.30.1`
+
+Final IP:
+
+`10.10.30.30`
+
+This transformed the server from a simple attack target into a protected internal enterprise-style asset.
+
+---
+
+# SERVERNET Role
+
+SERVERNET represents an internal protected server network.
+
+`LAB-UBUNTU-01` is not intended to behave like a publicly exposed system.
+
+Its role is to represent an internal Linux server that:
+
+- provides services
+- generates security telemetry
+- receives approved administration
+- is protected from unnecessary lateral movement
+
+---
+
+# OPNsense Integration
+
+Once the server moved into SERVERNET, all inter-zone traffic passed through:
+
+`LAB-FW-01`
+
+This provided:
+
+- routing
+- firewall enforcement
+- logging
+- segmentation
+
+The server no longer relied on unrestricted direct communication with other VMs.
+
+---
+
+# Early SERVERNET Policy
+
+Initial SERVERNET behaviour included approved access for:
+
+- DNS
+- NTP
+- Internet updates
+- controlled administration
+- later Wazuh telemetry
+
+Unnecessary traffic toward:
+
+- REDNET
+- CORPNET
+
+was restricted.
+
+This improved isolation compared with the original flat lab.
+
+---
+
+# CORPNET Administration
+
+During the initial segmented architecture, the Windows workstation was allowed to access selected Ubuntu services.
+
+Approved administrative access included:
+
+- SSH TCP/22
+- HTTPS TCP/443 where required
+
+This provided a realistic workstation-to-server management path.
+
+---
+
+# REDNET Testing
+
+During earlier OPNsense stages, Kali retained controlled access to Ubuntu for security testing.
+
+This preserved the original offensive exercises while placing them behind explicit firewall policy.
+
+Examples included:
+
+- Nmap
+- SSH testing
+- Hydra
+- fail2ban validation
+
+The important difference was that this access now existed because of intentional firewall policy rather than flat-network trust.
+
+---
+
+# Wazuh Integration
+
+`LAB-UBUNTU-01` was later integrated with Wazuh.
+
+The server sends telemetry to:
+
+`LAB-SIEM-01`
+
+Address:
+
+`10.10.40.10`
+
+Primary agent communication:
+
+`TCP/1514`
+
+Enrollment may use:
+
+`TCP/1515`
+
+Final agent identity:
+
+`ID 002 — LAB-UBUNTU-01`
+
+Final state:
+
+`Active`
+
+---
+
+# Linux Monitoring
+
+The Linux monitoring phase expanded beyond basic host logs.
+
+The final monitoring design included:
+
+- Wazuh agent telemetry
+- authentication logs
+- system events
+- auditd
+- custom detection rules
+
+This transformed Ubuntu from a basic target into a useful Blue Team data source.
+
+---
+
+# auditd Integration
+
+`auditd` was introduced to provide deeper Linux security visibility.
+
+Audit logs were ingested into Wazuh.
+
+This allowed the SIEM to observe security-relevant Linux events that standard logs alone might not capture as clearly.
+
+The audit subsystem became especially useful for:
+
+- account changes
+- privileged actions
+- system administration
+- detection engineering
+
+---
+
+# User-Creation Detection
+
+A controlled Linux user-creation event was used to validate detection logic.
+
+Wazuh generated:
+
+`Rule 100200`
+
+This represented a custom detection for a native Linux user-add event.
+
+The objective was to prove that account creation on the server could be:
+
+- generated
+- logged
+- ingested
+- decoded
+- detected
+
+Status:
+
+**PASS**
+
+---
+
+# User-Deletion Detection
+
+A controlled user-deletion event was also generated.
+
+Wazuh generated:
+
+`Rule 100201`
+
+This represented a custom detection for a native Linux user-delete event.
+
+Status:
+
+**PASS**
+
+Together, the two detections demonstrated:
+
+    Linux Administrative Action
+        |
+        v
+    auditd / System Logging
+        |
+        v
+    Wazuh Agent
+        |
+        v
+    LAB-SIEM-01
+        |
+        v
+    Custom Detection
+
+---
+
+# Detection Engineering Role
+
+The Ubuntu server became an important platform for Linux detection engineering.
+
+Rather than only installing an agent and collecting logs, the lab used Ubuntu to create and validate custom security rules.
+
+This represented a major development from the original fail2ban-only phase.
+
+The project had evolved from:
+
+**host protection**
+
+to:
+
+**centralized detection engineering**
+
+---
+
+# SERVERNET to SOCNET Validation
+
+Final test:
+
+    nc -zv -w 3 10.10.40.10 1514
+
+Expected:
+
+`ALLOW`
+
+Result:
+
+Connection succeeded.
+
+Status:
+
+**PASS**
+
+This confirmed the Linux server could send Wazuh telemetry to SOCNET.
+
+---
+
+# SERVERNET to CORPNET Validation
+
+Final test:
+
+    nc -zv -w 3 10.10.20.20 445
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Connection timed out.
+
+Status:
+
+**PASS**
+
+This confirmed that the Linux server could not freely access Windows SMB services in CORPNET.
+
+---
+
+# SERVERNET to DMZ Validation
+
+Final test:
+
+    nc -zv -w 3 10.10.60.10 22
+
+Expected:
+
+`BLOCK`
+
+Result:
+
+Connection timed out.
+
+Status:
+
+**PASS**
+
+This confirmed that the internal server was not permitted to use SSH to administer the DMZ.
+
+---
+
+# Service Testing vs Ping
+
+One important troubleshooting lesson occurred when ICMP behaviour did not match actual service connectivity.
+
+At one point, Ubuntu could not successfully ping the SIEM.
+
+However:
+
+`TCP/1514`
+
+was reachable.
+
+This demonstrated that:
+
+**ICMP failure does not automatically mean the required service path is broken.**
+
+From that point forward, the project increasingly tested actual application ports instead of relying only on ping.
+
+---
+
+# Wazuh Agent Connectivity Troubleshooting
+
+At one stage, `LAB-UBUNTU-01` appeared disconnected in Wazuh.
+
+The investigation compared:
+
+- agent logs
+- timestamps
+- network connectivity
+- manager state
+
+Recent logs showed the agent had connected successfully.
+
+The manager later reported the agent as:
+
+`Active`
+
+This reinforced an important monitoring lesson:
+
+**Historical errors should not automatically be treated as current failures.**
+
+Always correlate:
+
+- timestamps
+- current service status
+- current manager state
+- current network connectivity
+
+---
+
+# Final Wazuh State
+
+The final Wazuh agent state for Ubuntu is:
+
+    ID: 002
+    Name: LAB-UBUNTU-01
+    Status: Active
+
+This was confirmed during the final lab-wide validation.
+
+---
+
+# Server Shutdown Troubleshooting
+
+During the final shutdown process, Ubuntu initially refused to power off cleanly because the shutdown was inhibited by:
+
+`unattended-upgrades`
+
+A process inspection showed:
+
+`unattended-upgrade-shutdown --wait-for-signal`
+
+No active package-management process such as:
+
+- apt
+- apt-get
+- dpkg
+
+was performing an installation at that time.
+
+The service was therefore safely stopped before shutdown.
+
+The resolution used:
+
+    systemctl stop unattended-upgrades.service
+
+followed by:
+
+    poweroff
+
+This allowed the server to shut down normally.
+
+---
+
+# Why the Shutdown Check Mattered
+
+The service was not simply terminated blindly.
+
+The process state was first reviewed to ensure package operations were not actively modifying the system.
+
+This preserved the project’s change-management philosophy:
+
+- inspect
+- understand
+- act
+- verify
+
+rather than forcing a shutdown without determining the cause.
+
+---
+
+# VirtualBox Soft Lockup Messages
+
+During some shutdown or high-load situations, Ubuntu displayed soft-lockup-style messages.
+
+The VM remained responsive.
+
+The likely cause was VirtualBox host CPU contention rather than evidence of persistent guest OS corruption.
+
+Because the system remained functional and validation passed, unnecessary kernel changes were avoided.
+
+This followed another important project principle:
+
+**Do not make major system changes solely because of an isolated symptom when the evidence does not support it.**
+
+---
+
+# Storage and System Health
+
+The Ubuntu server remained operational during final validation.
+
+No critical server-side failure prevented:
+
+- Wazuh telemetry
+- auditd monitoring
+- networking
+- firewall validation
+- clean final snapshot creation
+
+The host was therefore considered stable.
+
+---
+
+# Ubuntu Role in Purple Team Operations
+
+The final Ubuntu server can support future scenarios such as:
+
+- suspicious user creation
+- privilege escalation
+- unauthorized account deletion
+- SSH attacks
+- persistence
+- service changes
+- file tampering
+- privilege abuse
+- suspicious process execution
+- detection engineering
+
+Its current purpose is no longer to serve only as a basic SSH target.
+
+It now functions as a protected Linux enterprise asset with centralized monitoring.
+
+---
+
+# Defense-in-Depth Model
+
+The final Ubuntu security architecture can be represented as:
+
+    User / Process Activity
+          |
+          v
+    LAB-UBUNTU-01
+          |
+          +--> Linux Logs
+          |
+          +--> auditd
+          |
+          +--> Wazuh Agent
+          |
+          v
+    LAB-SIEM-01
+
+Network communication is additionally controlled by:
+
+`LAB-FW-01`
+
+This provides both:
+
+- endpoint visibility
+- network segmentation
+
+---
+
+# Final Validation Summary
+
+| Validation | Result |
+|---|---|
+| SERVERNET → SOCNET Wazuh/1514 | PASS |
+| SERVERNET → CORPNET SMB/445 blocked | PASS |
+| SERVERNET → DMZ SSH/22 blocked | PASS |
+| Wazuh agent active | PASS |
+| auditd ingestion | PASS |
+| Native user-add detection Rule 100200 | PASS |
+| Native user-delete detection Rule 100201 | PASS |
+| Controlled server shutdown | PASS |
+
+---
+
+# Snapshot History
+
+Snapshots were used before major Linux and networking changes throughout the project.
+
+These protected the server during:
+
+- network rebuild
+- OPNsense migration
+- Wazuh deployment
+- auditd integration
+- detection engineering
+- firewall changes
+- final validation
+
+After the full lab was validated, obsolete development snapshots were removed.
+
+The remaining snapshot is:
+
+`Final-Six-Zone-Validated-Baseline`
+
+Snapshot UUID:
+
+`23d97e1a-a95e-4dd9-8912-f48e312ccf74`
+
+---
+
+# Historical vs Current Ubuntu State
+
+This document intentionally preserves the server’s entire lifecycle.
+
+Historical state includes:
+
+    IP: 192.168.56.30
+    Role: Basic Ubuntu attack target
+    Services: SSH
+    Defensive control: fail2ban
+    Testing: Nmap / Hydra / SSH
+
+Current authoritative state is:
+
+    Hostname: LAB-UBUNTU-01
+    IP: 10.10.30.30
+    Zone: SERVERNET
+    Gateway: 10.10.30.1
+    Wazuh Agent: Active
+    auditd: Integrated
+    Role: Protected Internal Linux Server
+
+The earlier configuration remains documented because it represents the original stage of the project rather than an error.
+
+---
+
+# Evolution Summary
+
+The Ubuntu server evolved through several security maturity stages:
+
+    Basic Linux Server
+        |
+        v
+    SSH Target
+        |
+        v
+    Hydra / fail2ban Testing
+        |
+        v
+    Segmented SERVERNET Asset
+        |
+        v
+    Wazuh-Monitored Endpoint
+        |
+        v
+    auditd Integration
+        |
+        v
+    Custom Linux Detection Engineering
+        |
+        v
+    Final Protected Enterprise Server
+
+This progression reflects the wider evolution of the entire Cybersecurity Home Lab.
+
+---
+
+# Final Status
+
+The Ubuntu infrastructure phase is complete.
+
+`LAB-UBUNTU-01` is now:
+
+- correctly placed in SERVERNET
+- protected by OPNsense segmentation
+- connected to Wazuh
+- monitored with auditd
+- capable of generating custom Linux detections
+- blocked from unauthorized CORPNET and DMZ access
+- validated as part of the final six-zone environment
+- ready for realistic SOC and Purple Team scenarios
+
+Future activity should focus on controlled attack simulation, detection, investigation, and response rather than further baseline infrastructure changes.
