@@ -1,794 +1,1236 @@
-# Wazuh SIEM Deployment
+# Wazuh SIEM
 
-## 1. Overview
+## Overview
 
-Wazuh is deployed as the central Security Information and Event Management (SIEM) and endpoint monitoring platform in the cybersecurity homelab.
+This document records the complete evolution of Wazuh in the Cybersecurity Home Lab, from the period before centralized monitoring existed through the final validated SOC architecture.
 
-The SIEM server is located inside a dedicated SOC network and receives security telemetry from systems located in other security zones through controlled OPNsense firewall rules.
+The original lab did not have a SIEM.
 
-This deployment currently monitors:
+The earliest environment consisted mainly of:
 
-- LAB-WIN-01
-- LAB-UBUNTU-01
+- Kali Linux
+- Windows
+- Ubuntu Server
 
-The environment is designed to support future blue-team activities including:
+on:
 
-- Endpoint monitoring
-- Security event analysis
-- Vulnerability detection
-- Security Configuration Assessment
-- Threat detection
-- Incident investigation
-- Centralized log collection
-- Attack-and-detection exercises
+`192.168.56.0/24`
+
+Security validation at that stage relied heavily on:
+
+- local logs
+- terminal output
+- service state
+- attacker retesting
+- direct host inspection
+
+As the project matured, this approach became insufficient.
+
+The lab needed centralized visibility across:
+
+- Windows endpoints
+- Linux systems
+- firewall activity
+- network IDS alerts
+- Active Directory
+- application logs
+- endpoint security controls
+
+Wazuh was introduced to provide:
+
+- centralized log collection
+- endpoint monitoring
+- detection engineering
+- event correlation
+- alerting
+- SOC investigation capability
+
+The final platform runs on:
+
+`LAB-SIEM-01`
+
+Final address:
+
+`10.10.40.10`
+
+Zone:
+
+`SOCNET`
+
+Final Wazuh Manager version:
+
+`v4.14.7`
 
 ---
 
-## 2. SIEM Server
+# Phase 1 — Before Wazuh
 
-Hostname: `lab-siem-01`
+The earliest lab focused on individual attacker and defender exercises.
 
-Virtual machine name: `LAB-SIEM-01`
+Examples included:
 
-Operating system: Ubuntu Server 26.04.1 LTS
+- Nmap
+- SSH
+- Hydra
+- fail2ban
+- Windows Firewall testing
+- connectivity validation
 
-Network zone: `SOCNET`
+Evidence was reviewed directly on the affected hosts.
 
-IP address: `10.10.40.10/24`
+For example:
 
-Default gateway: `10.10.40.1`
+- SSH logs were inspected on Ubuntu
+- fail2ban status was checked locally
+- Windows firewall behaviour was checked locally
+- Nmap results were interpreted from Kali
 
-DNS server: `10.10.40.1`
-
-Virtual network:
-
-`SOC-NET`
-
-Approximate allocated memory:
-
-`8 GB`
-
-Root filesystem capacity after LVM configuration:
-
-Approximately `53 GB`
+This was valuable for foundational learning but did not represent how a SOC operates.
 
 ---
 
-## 3. Wazuh Deployment
+# Why Wazuh Was Introduced
 
-Wazuh version:
+The project needed a central platform capable of receiving security telemetry from multiple hosts and technologies.
 
-`4.14.7`
+The objectives included:
 
-The Wazuh all-in-one deployment includes:
+- centralized endpoint visibility
+- log normalization
+- custom detection rules
+- network-security telemetry
+- alert correlation
+- incident investigation
+- Purple Team validation
+
+Wazuh was selected as the SIEM/XDR platform for the lab.
+
+---
+
+# SOCNET Introduction
+
+A dedicated monitoring zone was created:
+
+`SOCNET`
+
+Network:
+
+`10.10.40.0/24`
+
+Gateway:
+
+`10.10.40.1`
+
+SIEM:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+This separated the monitoring platform from:
+
+- REDNET
+- CORPNET
+- SERVERNET
+- later ADNET
+- later DMZ
+
+SOCNET was intentionally designed as a monitoring destination rather than a general-purpose transit network.
+
+---
+
+# Wazuh Stack
+
+The SIEM stack includes:
 
 - Wazuh Manager
 - Wazuh Indexer
 - Wazuh Dashboard
 - Filebeat
 
-The deployment was performed using the official Wazuh installation script.
+These services collectively provide:
 
-The installer produced an operating-system compatibility warning because Ubuntu 26.04 was not included in the listed recommended Ubuntu releases.
-
-Because this is an isolated cybersecurity laboratory environment, installation was continued and the deployment was tested before proceeding.
-
-All major Wazuh components were confirmed operational.
-
----
-
-## 4. Wazuh Network Architecture
-
-The Wazuh server resides on:
-
-`SOCNET - 10.10.40.0/24`
-
-The SIEM server address is:
-
-`10.10.40.10`
-
-Monitored systems communicate with Wazuh through OPNsense.
-
-Current architecture:
-
-`LAB-WIN-01 -> CORPNET -> OPNsense -> SOCNET -> LAB-SIEM-01`
-
-`LAB-UBUNTU-01 -> SERVERNET -> OPNsense -> SOCNET -> LAB-SIEM-01`
-
-The monitoring network remains separated from the endpoint and server networks.
+- event ingestion
+- alert generation
+- indexing
+- visualization
+- analysis
 
 ---
 
-## 5. Wazuh Communication Ports
+# Initial Endpoint Monitoring
 
-The following Wazuh communication paths are currently used:
+The first major monitoring phase focused on endpoint telemetry.
 
-- TCP 1514 - Wazuh agent communication
-- TCP 1515 - Wazuh agent enrollment/registration
-- TCP 443 - Wazuh Dashboard HTTPS
-- TCP 9200 - Local Wazuh Indexer/OpenSearch service
+The initial monitored systems were:
 
-TCP 9200 is used internally by Wazuh components and was verified listening locally on the SIEM server.
+- `LAB-WIN-01`
+- `LAB-UBUNTU-01`
 
----
-
-## 6. OPNsense Integration
-
-OPNsense controls communication between the monitored security zones and SOCNET.
-
-Firewall aliases were created for the Wazuh infrastructure, including aliases representing:
-
-- Wazuh server
-- Wazuh agent communication ports
-- Wazuh Dashboard service
-
-Controlled rules permit authorized monitoring traffic while maintaining network segmentation.
-
-Examples include:
-
-`LAB-WIN-01 -> LAB-SIEM-01 TCP 1514/1515`
-
-`LAB-UBUNTU-01 -> LAB-SIEM-01 TCP 1514/1515`
-
-`ADMIN_WORKSTATION -> LAB-SIEM-01 TCP 443`
-
-Broad unrestricted communication between the security zones is not required for endpoint monitoring.
+The objective was to move from local log review to centralized security analysis.
 
 ---
 
-## 7. Windows Endpoint
+# Windows Agent Integration
 
-Agent name:
+The Windows workstation was enrolled into Wazuh.
 
-`LAB-WIN-01`
+Final agent identity:
 
-IP address:
+    ID: 001
+    Name: LAB-WIN-01
+    Status: Active
 
-`10.10.20.20`
+The Windows endpoint became a major source of telemetry.
 
-Security zone:
+---
 
-`CORPNET`
+# Windows Security Logs
 
-Operating system:
+Wazuh collected Windows Security events.
 
-Microsoft Windows 11 Enterprise
+This provided visibility into:
 
-Wazuh agent version:
+- authentication
+- privilege use
+- account activity
+- audit-policy events
+- process creation
 
-`4.14.7`
+These logs formed the foundation for Windows monitoring.
 
-The Wazuh agent was installed and configured to communicate with:
+---
 
-`10.10.40.10`
+# Sysmon Integration
 
-The Windows service was verified running.
+Sysmon was added to improve endpoint visibility.
 
-Connectivity from the Windows endpoint to the Wazuh Dashboard was tested using PowerShell:
+Compared with standard Windows logs, Sysmon provides richer detail around:
 
-`Test-NetConnection 10.10.40.10 -Port 443`
+- process creation
+- parent-child relationships
+- suspicious executables
+- command activity
+- network-related process behaviour
 
-Result:
+Wazuh successfully ingested Sysmon events.
 
-`TcpTestSucceeded : True`
+---
 
-The endpoint was verified in the Wazuh Dashboard with status:
+# PowerShell Monitoring
+
+PowerShell logging was expanded to include:
+
+- Script Block Logging
+- Module Logging
+- transcription
+
+This increased visibility into both legitimate administrative actions and potentially malicious PowerShell execution.
+
+The telemetry was integrated into Wazuh for future Purple Team scenarios.
+
+---
+
+# Advanced Windows Auditing
+
+Advanced auditing was enabled to improve the quality of Windows telemetry.
+
+Important categories included:
+
+- Logon
+- Process Creation
+- Special Logon
+
+Command-line process auditing was also enabled.
+
+This provided greater context during investigation.
+
+---
+
+# Microsoft Defender Monitoring
+
+Microsoft Defender telemetry was included in the Windows monitoring strategy.
+
+This provided visibility into:
+
+- Defender detections
+- remediation events
+- operational security events
+
+This complemented Sysmon and standard Windows auditing.
+
+---
+
+# Windows Firewall Monitoring
+
+Windows Firewall events were also incorporated into Wazuh.
+
+One important event was:
+
+`Event ID 5157`
+
+This represents:
+
+`The Windows Filtering Platform has blocked a connection`
+
+Monitoring this event helped distinguish host-level blocking from network-level OPNsense blocking.
+
+---
+
+# File Integrity Monitoring
+
+Wazuh File Integrity Monitoring was configured on the Windows endpoint.
+
+This enabled detection of selected file and configuration changes.
+
+The purpose was to support later scenarios involving:
+
+- persistence
+- unauthorized modification
+- configuration tampering
+- attacker-created artifacts
+
+---
+
+# Linux Agent Integration
+
+The Ubuntu server was enrolled into Wazuh.
+
+Final agent identity:
+
+    ID: 002
+    Name: LAB-UBUNTU-01
+    Status: Active
+
+This expanded monitoring beyond Windows.
+
+---
+
+# Linux Log Monitoring
+
+The Linux server provided telemetry including:
+
+- authentication logs
+- system logs
+- administrative activity
+- audit events
+
+The system became a monitored enterprise-style Linux asset rather than only a basic attack target.
+
+---
+
+# auditd Integration
+
+`auditd` was enabled and integrated into Wazuh.
+
+This provided deeper Linux visibility into:
+
+- privileged actions
+- account changes
+- system administration
+- security-relevant activity
+
+---
+
+# Linux Detection Engineering
+
+Custom detections were created for native Linux account-management activity.
+
+User creation:
+
+`Rule 100200`
+
+User deletion:
+
+`Rule 100201`
+
+These detections demonstrated that the lab had moved beyond simple log collection into custom detection engineering.
+
+---
+
+# Early Detection Engineering Maturity
+
+At this stage, the lab monitoring architecture had progressed from:
+
+    Local Logs
+        |
+        v
+    Centralized Wazuh
+        |
+        v
+    Endpoint Telemetry
+        |
+        v
+    Custom Detection Rules
+
+This was the first major SOC maturity milestone.
+
+---
+
+# OPNsense Firewall Telemetry
+
+After endpoint monitoring was established, the firewall became a telemetry source.
+
+OPNsense firewall logs were forwarded into Wazuh.
+
+This provided visibility into:
+
+- blocked connections
+- inter-zone violations
+- suspicious network behaviour
+- firewall enforcement
+
+---
+
+# Firewall Correlation Detection
+
+A firewall correlation rule was validated:
+
+`Wazuh Rule 87702`
+
+This demonstrated that the SIEM could process OPNsense firewall events and turn them into actionable detections.
+
+---
+
+# Why Firewall Logs Mattered
+
+Before firewall integration, Wazuh could observe endpoint behaviour but did not have complete visibility into rejected network paths.
+
+Adding OPNsense telemetry made it possible to correlate:
+
+- endpoint events
+- firewall blocks
+- attacker source addresses
+- destination services
+
+This improved investigation depth.
+
+---
+
+# Suricata IDS Introduction
+
+Suricata was deployed on OPNsense after the firewall architecture and Wazuh monitoring were already functional.
+
+This added network-based intrusion detection.
+
+Primary monitored interface:
+
+`em2`
+
+This corresponds to REDNET.
+
+---
+
+# Initial Suricata Ingestion Challenge
+
+Suricata events initially did not decode cleanly in Wazuh.
+
+The first events fell back to:
+
+`Rule 1002`
+
+because no appropriate decoder matched.
+
+This triggered a dedicated troubleshooting phase.
+
+---
+
+# Custom Suricata Decoder Phase
+
+A custom decoder was introduced during troubleshooting.
+
+Observed decoder names included:
+
+`suricata-eve-syslog`
+
+This allowed the project to confirm that Suricata events were reaching Wazuh, but the architecture still required refinement.
+
+---
+
+# Transition to JSON Decoding
+
+The ingestion approach was later simplified.
+
+Suricata events were handled using the built-in:
+
+`json`
+
+decoder.
+
+This reduced unnecessary custom parsing logic.
+
+---
+
+# Built-In Suricata Detection
+
+Wazuh's built-in Suricata ruleset successfully processed the event.
+
+Relevant ruleset file:
+
+`0475-suricata_rules.xml`
+
+Alert:
+
+`Rule 86601`
+
+Description:
+
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
+
+This confirmed that the custom wrapper decoder was no longer necessary.
+
+---
+
+# Dedicated Suricata Transport
+
+A dedicated network path was created for Suricata events.
+
+Protocol:
+
+`UDP`
+
+Port:
+
+`5514`
+
+Destination:
+
+`LAB-SIEM-01 — 10.10.40.10`
+
+This separated Suricata telemetry from other log sources.
+
+---
+
+# rsyslog Configuration
+
+The SIEM uses rsyslog to receive the Suricata stream.
+
+Configuration file:
+
+`/etc/rsyslog.d/30-suricata-remote.conf`
+
+The configuration uses:
+
+`imudp`
+
+on:
+
+`5514`
+
+and writes Suricata events to:
+
+`/var/log/suricata/eve.json`
+
+---
+
+# Suricata Log Directory
+
+Directory:
+
+`/var/log/suricata`
+
+Ownership:
+
+`syslog:wazuh`
+
+Permissions:
+
+`750`
+
+This allows:
+
+- rsyslog to write
+- Wazuh to read
+
+---
+
+# UDP Listener Validation
+
+The SIEM was confirmed listening on:
+
+`0.0.0.0:5514`
+
+and:
+
+`[::]:5514`
+
+This validated the transport layer before full end-to-end testing.
+
+---
+
+# Final Suricata Pipeline
+
+The final architecture is:
+
+    LAB-FW-01
+       |
+       v
+    Suricata
+       |
+       v
+    Remote Logging
+       |
+       | UDP/5514
+       v
+    LAB-SIEM-01
+       |
+       v
+    rsyslog
+       |
+       v
+    /var/log/suricata/eve.json
+       |
+       v
+    Wazuh Logcollector
+       |
+       v
+    JSON Decoder
+       |
+       v
+    Wazuh Rules
+
+---
+
+# Suricata Test Signature
+
+A controlled IDS test produced:
+
+`Signature ID 2100498`
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Category:
+
+`Potentially Bad Traffic`
+
+Severity:
+
+`2`
+
+This became the primary end-to-end validation signature.
+
+---
+
+# Wazuh Suricata Validation
+
+Wazuh generated:
+
+`Rule 86601`
+
+for the controlled Suricata event.
+
+This confirmed:
+
+- IDS detection
+- event forwarding
+- rsyslog reception
+- JSON ingestion
+- Wazuh decoding
+- alert generation
+
+---
+
+# full_log Behaviour
+
+During investigation, a Suricata Wazuh alert showed:
+
+`full_log: null`
+
+This did not mean the event was missing.
+
+Structured fields were still present and usable.
+
+The correct investigation approach became:
+
+- search by rule ID
+- search by location
+- inspect parsed JSON fields
+
+rather than depending exclusively on `full_log`.
+
+---
+
+# Live JSON Parsing Lesson
+
+Direct `jq` operations against actively written JSON files occasionally returned parsing errors.
+
+This did not automatically indicate that the ingestion pipeline was broken.
+
+Because valid Wazuh alerts continued to appear, the issue was treated as a live-file parsing condition rather than evidence of total corruption.
+
+This reinforced a broader troubleshooting principle:
+
+**Validate the full pipeline before diagnosing failure from one isolated symptom.**
+
+---
+
+# Active Directory Monitoring
+
+After ADNET was introduced, the Domain Controller was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+    Status: Active
+
+This expanded SIEM visibility into identity infrastructure.
+
+---
+
+# Active Directory Security Events
+
+Important observed events included:
+
+- `5136`
+- `4719`
+- `4672`
+
+These provided visibility into:
+
+- directory modifications
+- audit-policy changes
+- privileged logons
+
+---
+
+# Domain Controller Sysmon
+
+Sysmon was installed on:
+
+`LAB-DC-01`
+
+Version:
+
+`15.22`
+
+Binary:
+
+`C:\Tools\Sysmon\Sysmon64.exe`
+
+Configuration:
+
+`sysmon-dc.xml`
+
+Wazuh successfully ingested the Domain Controller Sysmon logs.
+
+---
+
+# Domain Controller Sysmon Tuning
+
+The configuration was tuned to focus on security-relevant executables.
+
+Process-create coverage included:
+
+- powershell
+- pwsh
+- cmd
+- rundll32
+- regsvr32
+- mshta
+- certutil
+- bitsadmin
+- wscript
+- cscript
+- schtasks
+- nltest
+- ntdsutil
+- whoami
+- net
+- net1
+
+DNS monitoring was similarly narrowed to relevant processes.
+
+This reduced noise while maintaining high-value telemetry.
+
+---
+
+# DMZ Monitoring
+
+The final endpoint added to Wazuh was:
+
+`LAB-DMZ-01`
+
+Agent:
+
+    ID: 004
+    Name: LAB-DMZ-01
+    Status: Active
+
+The DMZ added application and public-facing server telemetry to the SIEM.
+
+---
+
+# DMZ Wazuh Connectivity Validation
+
+Before agent installation, the required network paths were tested.
+
+Ports:
+
+- `1514`
+- `1515`
+
+Both were reachable from the DMZ.
+
+This ensured the firewall path was correct before software deployment.
+
+---
+
+# Nginx Monitoring
+
+The Wazuh agent on the DMZ monitors:
+
+`/var/log/nginx/access.log`
+
+with:
+
+`apache`
+
+log format.
+
+It also monitors:
+
+`/var/log/nginx/error.log`
+
+with:
+
+`syslog`
+
+log format.
+
+---
+
+# Nginx Detection Validation
+
+A controlled request generated:
+
+`GET /wazuh-nginx-verify-01 HTTP/1.1`
+
+Source:
+
+`10.10.10.10`
+
+Response:
+
+`404`
+
+Wazuh generated:
+
+`Rule 31101`
+
+Description:
+
+`Web server 400 error code.`
+
+The event included:
+
+- agent `LAB-DMZ-01`
+- source IP `10.10.10.10`
+- decoder `web-accesslog`
+
+This confirmed application-layer monitoring.
+
+---
+
+# SIEM Recovery
+
+At one point, `LAB-SIEM-01` experienced a storage-related issue.
+
+The system required recovery.
+
+The SIEM successfully returned to a healthy bootable state.
+
+---
+
+# Storage Architecture
+
+The main logical volume is:
+
+`/dev/mapper/ubuntu--vg-ubuntu--lv`
+
+An observed healthy recovery state showed approximately:
+
+    Total: 53G
+    Used: 21G
+    Free: 30G
+
+Later final validation showed:
+
+    Total: 53G
+    Used: 25G
+    Available: 26G
+    Usage: 49%
+
+This confirmed sufficient storage remained.
+
+---
+
+# System Health After Recovery
+
+After recovery:
+
+- LVM was active
+- the logical volume was healthy
+- the system booted normally
+- no failed systemd services remained
+- Wazuh services were operational
+
+---
+
+# Snapshot Recovery Decision
+
+An older SIEM snapshot existed.
+
+However, restoring it would have rolled back later configuration and telemetry work.
+
+The decision was made:
+
+**Do not restore the old SIEM snapshot.**
+
+The recovered current system became authoritative.
+
+This avoided losing:
+
+- later Wazuh configuration
+- Suricata integration
+- detection engineering
+- agent onboarding
+
+---
+
+# Wazuh Stack Validation
+
+Final service status:
+
+- Wazuh Manager — Active
+- Wazuh Indexer — Active
+- Wazuh Dashboard — Active
+- Filebeat — Active
+
+This confirmed the complete platform was operational.
+
+---
+
+# Agent Connectivity Troubleshooting
+
+At one point, the Ubuntu agent appeared disconnected.
+
+Rather than assuming a current outage, the investigation compared:
+
+- log timestamps
+- current agent state
+- service connectivity
+- manager status
+
+Recent logs showed successful connection.
+
+The manager later displayed:
 
 `Active`
 
-Wazuh telemetry from the Windows endpoint includes information such as:
+This reinforced:
 
-- System inventory
-- Security Configuration Assessment
-- Vulnerability information
+**Historical errors are not necessarily current errors.**
+
+---
+
+# Service-Level Connectivity
+
+The lab deliberately moved away from relying only on ping.
+
+For example:
+
+- ICMP could fail
+- TCP/1514 could still succeed
+
+If Wazuh's required service port was reachable, the telemetry path could still be healthy.
+
+This became a standard validation principle.
+
+---
+
+# Final Agent Inventory
+
+The final Wazuh environment contains:
+
+    ID 001 — LAB-WIN-01 — Active
+    ID 002 — LAB-UBUNTU-01 — Active
+    ID 003 — LAB-DC-01 — Active
+    ID 004 — LAB-DMZ-01 — Active
+
+This provides monitoring coverage across all major enterprise asset types in the lab.
+
+---
+
+# Final Telemetry Sources
+
+Wazuh now receives data from multiple layers.
+
+## Windows Endpoint
+
 - Security events
+- Sysmon
+- PowerShell
+- Defender
+- Windows Firewall
+- File Integrity Monitoring
+
+## Linux Server
+
+- Linux logs
+- authentication
+- auditd
+- account-change events
+
+## Domain Controller
+
+- Security events
+- Active Directory changes
+- privileged logons
+- Sysmon
+
+## DMZ
+
+- Linux logs
+- Nginx access logs
+- Nginx error logs
+
+## Network Security
+
+- OPNsense firewall logs
+- Suricata IDS events
+
+This provides broad SOC visibility.
 
 ---
 
-## 8. Ubuntu Endpoint
+# Detection Examples
 
-Agent name:
+Validated detections include:
 
-`LAB-UBUNTU-01`
+## Firewall
 
-IP address:
+`Rule 87702`
 
-`10.10.30.30`
+Purpose:
 
-Security zone:
-
-`SERVERNET`
-
-Operating system:
-
-Ubuntu 26.04.1 LTS
-
-Wazuh agent version:
-
-`4.14.7`
-
-The Ubuntu Wazuh agent was configured to communicate with:
-
-`10.10.40.10`
-
-The agent successfully completed registration with the Wazuh manager.
-
-Agent logs confirmed:
-
-- Authentication key request
-- Authentication key received
-- Connection attempt to `10.10.40.10:1514`
-- Successful TCP connection to the Wazuh server
-
-The service was enabled for automatic startup.
-
-After a complete shutdown and restart of the lab, the following command was used:
-
-`sudo systemctl is-active wazuh-agent`
-
-Result:
-
-`active`
-
-The endpoint was subsequently verified in the Wazuh Dashboard with status:
-
-`Active`
+OPNsense firewall correlation.
 
 ---
 
-## 9. SERVERNET Firewall Troubleshooting
+## Suricata
 
-During Ubuntu agent deployment, communication from:
+`Rule 86601`
 
-`10.10.30.30`
+Description:
 
-to:
-
-`10.10.40.10`
-
-on TCP ports `1514` and `1515` initially failed.
-
-OPNsense Live View showed the traffic being matched by an unintended blocking rule.
-
-The firewall policy was reviewed and corrected.
-
-Connectivity was then retested using:
-
-`nc -zv -w 5 10.10.40.10 1514`
-
-and:
-
-`nc -zv -w 5 10.10.40.10 1515`
-
-Both tests succeeded after the firewall correction.
-
-This demonstrated the value of firewall logging when troubleshooting segmented network environments.
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
 
 ---
 
-## 10. Ubuntu Repository Troubleshooting
+## Linux User Creation
 
-During installation of the Ubuntu Wazuh agent, several repository-related issues were encountered.
-
-These included:
-
-- Initial Wazuh GPG key import failure
-- Intermittent DNS resolution problems
-- Incorrect keyring path caused by a typing error
-- Difficulty retrieving the Wazuh repository key
-
-IPv4 connectivity was tested explicitly.
-
-The Wazuh signing key was successfully retrieved and verified.
-
-The repository was configured using:
-
-`/usr/share/keyrings/wazuh.gpg`
-
-The configured repository was:
-
-`deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main`
-
-APT repository access was subsequently verified successfully.
+`Rule 100200`
 
 ---
 
-## 11. Host Disk-Full Incident
+## Linux User Deletion
 
-During operation of the cybersecurity lab, the physical VirtualBox host reached zero available disk space.
-
-VirtualBox suspended running virtual machines and reported:
-
-`DrvVD_DISKFULL`
-
-The affected virtual machines included the SIEM and Windows systems.
-
-Investigation of the host identified a large approximately 45.7 GB archive in the Downloads directory.
-
-The unnecessary archive was removed.
-
-Host free space increased to approximately:
-
-`45.7 GB`
-
-VirtualBox virtual disk files, snapshot files and VM configuration files were not manually deleted.
+`Rule 100201`
 
 ---
 
-## 12. Wazuh Indexer Recovery
+## Nginx Web Error
 
-Following the VirtualBox disk-full incident, the Wazuh Dashboard displayed:
+`Rule 31101`
 
-`Wazuh dashboard server is not ready yet`
+Description:
 
-Dashboard logs showed connection failures to:
-
-`127.0.0.1:9200`
-
-The Wazuh Indexer was not initially listening on TCP 9200.
-
-Service investigation showed that the indexer had previously experienced startup timeout behavior while OpenSearch was still initializing.
-
-Indexer logs were reviewed.
-
-The logs showed normal OpenSearch module and plugin initialization activity and did not show clear evidence of index corruption.
-
-No Wazuh data directories were deleted.
-
-No index data was manually modified.
-
-No systemd timeout override was applied.
-
-The lab was cleanly shut down and restarted.
-
-After the clean restart:
-
-`wazuh-indexer.service`
-
-reported:
-
-`active (running)`
-
-TCP port 9200 was verified using:
-
-`sudo ss -lntp | grep ':9200'`
-
-The output confirmed that the Java/OpenSearch process was listening on:
-
-`127.0.0.1:9200`
-
-The Wazuh Dashboard service was also verified:
-
-`wazuh-dashboard.service`
-
-Status:
-
-`active (running)`
-
-The dashboard then became accessible again through HTTPS.
+`Web server 400 error code.`
 
 ---
 
-## 13. Final Agent Verification
+# Detection Architecture
 
-After recovery, both monitored endpoints were checked from the Wazuh Dashboard.
+The lab can now correlate activity across multiple layers.
 
-Verified endpoints:
+Example:
 
-| Agent | IP Address | Zone | Status |
-| --- | --- | --- | --- |
-| LAB-WIN-01 | 10.10.20.20 | CORPNET | Active |
-| LAB-UBUNTU-01 | 10.10.30.30 | SERVERNET | Active |
+    Attacker
+       |
+       v
+    OPNsense
+       |
+       +--> Firewall Log
+       |
+       +--> Suricata Alert
+       |
+       v
+    Target
+       |
+       +--> Endpoint Log
+       |
+       +--> Application Log
+       |
+       v
+    Wazuh
+       |
+       v
+    Detection / Investigation
 
-Dashboard summary:
-
-- Active agents: 2
-- Disconnected agents: 0
-- Pending agents: 0
-
-This confirms successful communication across:
-
-`CORPNET -> OPNsense -> SOCNET`
-
-and:
-
-`SERVERNET -> OPNsense -> SOCNET`
-
----
-
-## 14. Recovery and Change Management
-
-Snapshots were used before significant configuration and recovery activities.
-
-Important recovery snapshots include:
-
-`LAB-SIEM-01 - Wazuh + Windows Agent Verified`
-
-`SIEM - Pre Indexer Timeout Recovery`
-
-`SIEM - Wazuh Windows Ubuntu Agents Verified`
-
-Snapshots provide rollback points before significant changes are introduced.
-
-Sensitive configuration files, credentials, private keys and OPNsense configuration backups are not stored publicly in the GitHub repository.
+This is one of the key differences between the original lab and the final SOC environment.
 
 ---
 
-## 15. Current SIEM Status
+# Final Wazuh Validation
 
-Current status:
-
-- Wazuh Manager: Operational
-- Wazuh Indexer: Operational
-- Wazuh Dashboard: Operational
-- Filebeat: Operational
-- Windows agent: Active
-- Ubuntu agent: Active
-- CORPNET monitoring path: Verified
-- SERVERNET monitoring path: Verified
-- SOCNET segmentation: Operational
-- Dashboard HTTPS access: Verified
-- Wazuh agent enrollment: Verified
-
-The Wazuh SIEM deployment is now operational and integrated into the segmented cybersecurity homelab.
-
----
-
-## 16. Planned Improvements
-
-Future defensive-security improvements include:
-
-- Microsoft Sysmon deployment
-- Enhanced Windows event collection
-- Linux auditing
-- OPNsense log forwarding to Wazuh
-- Suricata IDS deployment
-- Network intrusion monitoring
-- Active Directory monitoring
-- Vulnerability laboratory monitoring
-- Custom Wazuh detection rules
-- MITRE ATT&CK mapping
-- Attack simulation and detection validation
-- Incident-response exercises
-- SOC investigation documentation
-
-The objective is to evolve the environment from basic endpoint monitoring into a complete attack, detection, investigation and response laboratory.
+| Validation | Result |
+|---|---|
+| Manager active | PASS |
+| Indexer active | PASS |
+| Dashboard active | PASS |
+| Filebeat active | PASS |
+| LAB-WIN-01 active | PASS |
+| LAB-UBUNTU-01 active | PASS |
+| LAB-DC-01 active | PASS |
+| LAB-DMZ-01 active | PASS |
+| Windows telemetry | PASS |
+| Linux telemetry | PASS |
+| auditd | PASS |
+| Sysmon | PASS |
+| PowerShell logging | PASS |
+| Defender monitoring | PASS |
+| Firewall logs | PASS |
+| Firewall Rule 87702 | PASS |
+| Suricata UDP/5514 | PASS |
+| Suricata Rule 86601 | PASS |
+| Linux Rule 100200 | PASS |
+| Linux Rule 100201 | PASS |
+| Nginx Rule 31101 | PASS |
+| AD telemetry | PASS |
+| SIEM storage health | PASS |
 
 ---
 
-## Wazuh Dashboard Trusted HTTPS Configuration
+# Snapshot History
 
-### Objective
+Wazuh configuration changed significantly throughout the project.
 
-The Wazuh Dashboard was already configured to use HTTPS, but browsers displayed a `Not secure` warning when accessing:
+Snapshots were used before:
 
-`https://10.10.40.10`
+- initial deployment
+- endpoint onboarding
+- detection engineering
+- firewall integration
+- Suricata decoder work
+- rsyslog changes
+- Active Directory onboarding
+- DMZ onboarding
 
-The objective was to implement a properly trusted TLS configuration for the CyberLab environment without disabling certificate verification or bypassing browser security controls.
+After the storage recovery, the live SIEM state became authoritative.
 
----
+Once the entire lab passed final validation, obsolete snapshots were removed.
 
-## Initial Certificate Investigation
+The final remaining snapshot is:
 
-The existing Wazuh Dashboard certificate was inspected from the Windows browser.
-
-The certificate was valid, but its Subject Alternative Name contained:
-
-`IP Address: 127.0.0.1`
-
-The Wazuh Dashboard was accessed through:
-
-`https://10.10.40.10`
-
-Because modern browsers validate the Subject Alternative Name, the existing certificate did not correctly identify the actual Dashboard IP address.
-
-The existing certificate chain was also not trusted by the Windows endpoint.
-
-The issue therefore consisted of:
-
-1. Certificate identity mismatch
-2. Untrusted certificate authority
-
-The solution was to deploy a dedicated internal CyberLab Certificate Authority and issue a new Wazuh Dashboard server certificate containing the correct IP address.
+`Final-Six-Zone-Validated-Baseline`
 
 ---
 
-## Existing Wazuh Dashboard TLS Configuration
+# Historical vs Current State
 
-The Dashboard configuration was inspected at:
+The Wazuh documentation intentionally preserves every major stage.
 
-`/etc/wazuh-dashboard/opensearch_dashboards.yml`
+Historical stages include:
 
-The existing TLS configuration referenced:
+- no SIEM
+- Windows-only monitoring
+- Linux monitoring
+- early detection engineering
+- firewall-log integration
+- failed Suricata decoding
+- custom decoder experimentation
+- transition to JSON
+- Active Directory integration
+- DMZ and Nginx integration
+- SIEM recovery
 
-`/etc/wazuh-dashboard/certs/wazuh-dashboard-key.pem`
+The authoritative current state is:
 
-`/etc/wazuh-dashboard/certs/wazuh-dashboard.pem`
-
-`/etc/wazuh-dashboard/certs/root-ca.pem`
-
-SSL was already enabled.
-
-The original certificate directory was backed up before making changes:
-
-`/etc/wazuh-dashboard/certs.pre-tls-fix`
-
-The Dashboard configuration was also backed up:
-
-`/etc/wazuh-dashboard/opensearch_dashboards.yml.pre-cyberlab-tls`
-
----
-
-## Snapshot Protection
-
-Before implementing the TLS changes, rollback snapshots were created.
-
-Pre-change snapshots included:
-
-`Windows - Pre Wazuh Dashboard TLS Trust`
-
-`LAB-SIEM-01 - Pre Dashboard TLS Certificate Fix`
-
-This allowed the environment to be restored if the certificate deployment caused a Dashboard service failure.
+    Server: LAB-SIEM-01
+    IP: 10.10.40.10
+    Zone: SOCNET
+    Manager Version: v4.14.7
+    Agents: 4 Active
+    Firewall Telemetry: Active
+    Suricata Telemetry: Active
+    Nginx Monitoring: Active
+    Endpoint Monitoring: Active
+    Identity Monitoring: Active
 
 ---
 
-## CyberLab Root Certificate Authority
+# Evolution Summary
 
-A dedicated internal Certificate Authority was created for the lab.
+The SIEM capability evolved through:
 
-Root CA private key:
-
-`cyberlab-root-ca-key.pem`
-
-Root CA certificate:
-
-`cyberlab-root-ca.pem`
-
-The Root CA identity was configured as:
-
-- Country: NG
-- State: Rivers
-- Location: Port-Harcourt
-- Organization: CyberLab
-- Organizational Unit: Security-Operations
-- Common Name: CyberLab-Root-CA
-
-The Root CA certificate was configured with approximately 10 years of validity.
-
-Verification confirmed that the Root CA was self-signed:
-
-`Subject = CyberLab-Root-CA`
-
-`Issuer = CyberLab-Root-CA`
-
-The Root CA private key remains stored only on the SIEM system and must never be committed to GitHub or transferred to endpoints.
-
----
-
-## Wazuh Dashboard Server Certificate
-
-A new private key was generated for the Wazuh Dashboard:
-
-`cyberlab-dashboard-key.pem`
-
-A Certificate Signing Request was created for:
-
-`CN=10.10.40.10`
-
-A certificate extension file was created containing:
-
-`subjectAltName=IP:10.10.40.10`
-
-`extendedKeyUsage=serverAuth`
-
-The CSR was then signed using the CyberLab Root CA.
-
-Generated server certificate:
-
-`cyberlab-dashboard.pem`
-
-Certificate verification confirmed:
-
-- Subject CN: `10.10.40.10`
-- Issuer: `CyberLab-Root-CA`
-- Subject Alternative Name: `IP Address:10.10.40.10`
-- Extended use: TLS server authentication
-
-The certificate and private key were also verified as a matching cryptographic pair.
+    No Central Monitoring
+          |
+          v
+    Wazuh Deployment
+          |
+          v
+    Windows Endpoint Monitoring
+          |
+          v
+    Sysmon / PowerShell / Defender
+          |
+          v
+    Linux Monitoring
+          |
+          v
+    auditd / Custom Rules
+          |
+          v
+    OPNsense Firewall Telemetry
+          |
+          v
+    Suricata IDS Integration
+          |
+          v
+    Active Directory Monitoring
+          |
+          v
+    DMZ / Nginx Monitoring
+          |
+          v
+    Full SOC Monitoring Platform
 
 ---
 
-## Certificate Permissions
+# Final Status
 
-The Wazuh Dashboard certificate and private key were configured with ownership:
+The Wazuh SIEM phase is complete.
 
-`wazuh-dashboard:wazuh-dashboard`
+The platform now provides centralized visibility into:
 
-Restrictive permissions were applied to the certificate and key files.
+- endpoints
+- servers
+- identity systems
+- firewall activity
+- IDS alerts
+- web-server activity
 
-The new certificate and key were copied to the filenames already referenced by the Wazuh Dashboard configuration:
+The SIEM is healthy, validated, and ready for operational use.
 
-`wazuh-dashboard.pem`
+Future work should focus on:
 
-`wazuh-dashboard-key.pem`
+- alert triage
+- threat hunting
+- incident investigation
+- detection engineering
+- Purple Team exercises
+- attack correlation
+- response workflows
 
-This allowed the existing Dashboard configuration to remain unchanged.
-
----
-
-## Certificate Chain
-
-The Dashboard certificate and CyberLab Root CA public certificate were combined so that the Dashboard could present the certificate chain to connecting clients.
-
-The chain contained:
-
-`CyberLab-Root-CA`
-
-→ `10.10.40.10`
-
-The CyberLab Root CA private key was not included in the certificate chain.
-
----
-
-## Wazuh Dashboard Restart and Verification
-
-The Wazuh Dashboard service was restarted after the certificate replacement.
-
-Service verification returned:
-
-`active`
-
-The Dashboard successfully loaded using the new certificate.
-
-The browser certificate hierarchy showed:
-
-`CyberLab-Root-CA`
-
-→ `10.10.40.10`
-
-This confirmed that the Wazuh Dashboard was serving the expected CyberLab certificate chain.
-
----
-
-## Windows Root CA Trust
-
-The public CyberLab Root CA certificate was exported from the browser as:
-
-`CyberLab-Root-CA.cer`
-
-The certificate was imported into the Windows Local Machine Trusted Root Certification Authorities store using Administrator PowerShell:
-
-`Import-Certificate -FilePath "$env:USERPROFILE\Desktop\CyberLab-Root-CA.cer" -CertStoreLocation "Cert:\LocalMachine\Root"`
-
-The import completed successfully.
-
-The imported certificate thumbprint was:
-
-`F89A05A752F54D268EBE1C13A4315F70A0B3A399`
-
-Subject:
-
-`CN=CyberLab-Root-CA`
-
----
-
-## Final HTTPS Verification
-
-After closing and reopening the browser, the Wazuh Dashboard was accessed at:
-
-`https://10.10.40.10`
-
-The previous browser `Not secure` warning was removed.
-
-The browser successfully validated:
-
-1. The server certificate identity
-2. The certificate Subject Alternative Name
-3. The CyberLab Root CA
-4. The TLS trust chain
-
-The trusted communication path is now:
-
-`LAB-WIN-01`
-
-→ `HTTPS/TLS`
-
-→ `10.10.40.10`
-
-→ `Wazuh Dashboard`
-
-The configuration does not rely on disabling certificate validation or bypassing browser security warnings.
-
----
-
-## Security Notes
-
-The following files are sensitive and must never be committed to GitHub:
-
-`cyberlab-root-ca-key.pem`
-
-`cyberlab-dashboard-key.pem`
-
-`wazuh-dashboard-key.pem`
-
-Any certificate-authority private key must remain protected.
-
-Public certificates such as the CyberLab Root CA certificate may be distributed to trusted lab endpoints when necessary.
-
----
-
-## Verified Result
-
-The Wazuh Dashboard now provides trusted HTTPS access at:
-
-`https://10.10.40.10`
-
-Verified capabilities:
-
-- HTTPS enabled
-- Correct server certificate identity
-- Subject Alternative Name configured for `10.10.40.10`
-- Dedicated internal CyberLab Root CA
-- Dashboard certificate signed by CyberLab Root CA
-- Certificate/private-key match verified
-- Wazuh Dashboard service operational after certificate deployment
-- Windows trusts CyberLab Root CA
-- Browser certificate warning removed
-- Wazuh Dashboard remains accessible and operational
-- TLS validation remains enabled
-
----
-
-## Final Snapshots
-
-After successful verification, powered-off milestone snapshots were created:
-
-`Windows - Wazuh Dashboard TLS Trusted`
-
-`LAB-SIEM-01 - Wazuh Dashboard TLS Trusted`
-
-These snapshots represent the verified trusted HTTPS state of the environment.
-
----
-
-## Lessons Learned
-
-This exercise demonstrated the difference between:
-
-- HTTPS encryption
-- Certificate identity validation
-- Certificate trust
-- Subject Alternative Names
-- Root Certificate Authorities
-- Server certificates
-- Certificate chains
-- Private and public certificate material
-
-A service can use HTTPS while still generating browser security warnings if the certificate does not match the destination or if the issuing CA is not trusted.
-
-The correct solution is to establish a valid trust chain rather than bypass certificate validation.
-
----
-
-## Current SIEM Security State
-
-The following major Wazuh capabilities are now operational:
-
-- Windows Wazuh agent monitoring
-- Ubuntu Wazuh agent monitoring
-- Sysmon telemetry
-- PowerShell Script Block Logging
-- PowerShell Module Logging
-- PowerShell Transcription
-- Real-time File Integrity Monitoring
-- ADD / MODIFY / DELETE FIM lifecycle verification
-- Manager-side alert verification
-- Filebeat alert shipping
-- Wazuh Indexer storage
-- Dashboard event investigation
-- Trusted HTTPS access to Wazuh Dashboard
-
-The next phase of the homelab will focus on:
-
-`SOC Investigation → Dashboard Filtering → Threat Hunting → Detection Engineering`
+rather than further baseline Wazuh infrastructure changes.
