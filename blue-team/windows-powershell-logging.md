@@ -1,1991 +1,859 @@
-# Windows PowerShell Script Block Logging and Wazuh Integration
+# Windows PowerShell Logging
 
-## 1. Overview
+## Overview
 
-This document describes the deployment and verification of PowerShell Script Block Logging on `LAB-WIN-01` and its integration with the Wazuh SIEM running on `LAB-SIEM-01`.
+This document records the complete evolution of PowerShell logging in the Cybersecurity Home Lab, from the earliest standalone Windows phase through the final domain-managed monitoring configuration.
 
-The objective was to improve visibility into PowerShell activity by collecting Event ID `4104` from:
+PowerShell logging was not fully configured at the beginning of the project.
 
-`Microsoft-Windows-PowerShell/Operational`
+The original Windows lab focused primarily on:
 
-The final verified telemetry path is:
+- basic networking
+- local administration
+- Windows Firewall
+- early endpoint testing
+- attacker/defender interaction
 
-`PowerShell Activity -> Event ID 4104 -> Windows PowerShell Operational Log -> Wazuh Agent -> OPNsense -> SOCNET -> Wazuh Manager`
+As the project matured, PowerShell became an important telemetry source because it is widely used for both:
 
-The pipeline was successfully verified end-to-end.
+- legitimate administration
+- offensive security activity
 
----
+The lab therefore introduced progressively stronger PowerShell logging and integrated that telemetry into Wazuh.
 
-# 2. Endpoint Information
+The final PowerShell monitoring design includes:
 
-Host:
+- Script Block Logging
+- Module Logging
+- PowerShell transcription
+- Wazuh ingestion
+- Group Policy enforcement
+- complementary Sysmon process visibility
+- centralized SOC analysis
+
+Primary monitored workstation:
 
 `LAB-WIN-01`
 
-IP address:
+Final address:
 
 `10.10.20.20`
 
-Security zone:
+Zone:
 
 `CORPNET`
 
-SIEM server:
+Domain:
 
-`LAB-SIEM-01`
-
-SIEM IP:
-
-`10.10.40.10`
-
-Security zone:
-
-`SOCNET`
+`cyberlab.internal`
 
 ---
 
-# 3. Existing Security State
+# Phase 1 — Before Enhanced PowerShell Logging
 
-Before this phase, LAB-WIN-01 already had:
+The original Windows endpoint operated on:
 
-- Wazuh Agent
-- Microsoft Sysmon
-- Sysmon Operational event collection
-- Verified Wazuh forwarding
-- Verified end-to-end Sysmon telemetry
+`192.168.56.20`
 
-Existing snapshot:
+in the early flat network.
 
-`Windows - Sysmon Wazuh Integration Verified`
+At this stage, PowerShell could be used for:
 
-Because this was already a known-good powered-off state, no additional pre-change snapshot was required.
+- normal Windows administration
+- connectivity tests
+- system inspection
+- configuration
 
----
+However, detailed PowerShell security visibility had not yet been implemented.
 
-# 4. Checking Existing Script Block Logging
+Investigation relied mainly on:
 
-PowerShell Script Block Logging was checked using:
+- terminal output
+- standard Windows logs
+- manual observation
 
-    if (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging") { Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" } else { "Script Block Logging: Not configured" }
-
-Result:
-
-`Script Block Logging: Not configured`
-
-This confirmed the endpoint had no existing Script Block Logging policy.
+This was insufficient for a mature SOC environment.
 
 ---
 
-# 5. Enabling Script Block Logging
+# Why PowerShell Required Additional Monitoring
 
-Script Block Logging was enabled using:
+PowerShell is a legitimate Windows administration framework.
 
-    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Force | Out-Null; Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name EnableScriptBlockLogging -Type DWord -Value 1
+It is also commonly abused during attacks for:
 
-The value was then verified:
+- reconnaissance
+- payload execution
+- file operations
+- persistence
+- remote administration
+- credential-related activity
+- defense evasion
+- post-exploitation
 
-    Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" | Select-Object EnableScriptBlockLogging
+Simply detecting that:
 
-Result:
+`powershell.exe`
 
-`EnableScriptBlockLogging = 1`
+ran is not always enough.
 
----
+The SOC may also need to understand:
 
-# 6. First PowerShell Test
+- what commands were executed
+- which script blocks ran
+- which modules were loaded
+- what session activity occurred
+- which user executed the commands
 
-A harmless PowerShell command was launched in a new PowerShell process:
-
-    powershell.exe -NoProfile -Command "Write-Output 'PS_SCRIPTBLOCK_TEST_20260913'"
-
-Output:
-
-`PS_SCRIPTBLOCK_TEST_20260913`
-
-The PowerShell Operational log was then queried:
-
-    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational';Id=4104;StartTime=(Get-Date).AddMinutes(-5)} | Where-Object {$_.Message -match 'PS_SCRIPTBLOCK_TEST_20260913'} | Select-Object -First 3 TimeCreated,Id,Message
-
-Result:
-
-Event ID:
-
-`4104`
-
-Message:
-
-`Creating Scriptblock text (1 of 1)`
-
-This confirmed that Script Block Logging was functioning locally.
+This led to the introduction of enhanced PowerShell logging.
 
 ---
 
-# 7. Wazuh PowerShell Event Channel Check
+# Transition to Centralized Monitoring
 
-The Wazuh agent configuration was searched for existing PowerShell Operational collection:
+When Wazuh was introduced, Windows endpoint telemetry began moving from local-only analysis to centralized SOC monitoring.
 
-    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.conf" -Pattern "Microsoft-Windows-PowerShell/Operational" -Context 2,2
+`LAB-WIN-01` became the primary monitored Windows endpoint.
 
-No existing configuration was found.
-
----
-
-# 8. Wazuh Configuration Backup
-
-Before editing the agent configuration, a backup was created:
-
-    Copy-Item "C:\Program Files (x86)\ossec-agent\ossec.conf" "C:\Program Files (x86)\ossec-agent\ossec.conf.pre-powershell.bak" -Force
-
-This preserved the known-good Sysmon-integrated configuration.
-
----
-
-# 9. Adding PowerShell Operational Collection
-
-The following Wazuh block was added inside `<ossec_config>`:
-
-    <!-- PowerShell Operational event collection -->
-    <localfile>
-      <location>Microsoft-Windows-PowerShell/Operational</location>
-      <log_format>eventchannel</log_format>
-    </localfile>
-
-The block was inserted using PowerShell.
-
----
-
-# 10. Wazuh XML Validation
-
-The modified Wazuh configuration was validated before restarting the service:
-
-    try { [xml]$xml = Get-Content "C:\Program Files (x86)\ossec-agent\ossec.conf" -Raw; "XML VALID" } catch { $_.Exception.Message }
-
-Result:
-
-`XML VALID`
-
----
-
-# 11. Wazuh Agent Restart Issue
-
-An initial restart attempt using:
-
-    Restart-Service WazuhSvc
-
-returned an error indicating that the service could not be stopped.
-
-The service state was checked:
-
-    Get-Service WazuhSvc | Select-Object Status,Name,CanStop,CanShutdown,StartType
-
-Result:
-
-`Status: Stopped`
-
-The service had actually stopped despite the restart error.
-
-It was then started manually:
-
-    Start-Service WazuhSvc
-
-Service verification:
-
-    Get-Service WazuhSvc
-
-Result:
-
-`Running`
-
-This was a useful reminder to verify actual service state rather than relying only on command errors.
-
----
-
-# 12. Wazuh PowerShell Channel Verification
-
-The Wazuh agent log was searched:
-
-    Select-String -Path "C:\Program Files (x86)\ossec-agent\ossec.log" -Pattern "Microsoft-Windows-PowerShell/Operational" | Select-Object -Last 10
-
-The log confirmed:
-
-`Analyzing event log: 'Microsoft-Windows-PowerShell/Operational'.`
-
-This proved the Wazuh agent had opened the PowerShell Operational channel successfully.
-
----
-
-# 13. PowerShell-to-Wazuh Test
-
-A new harmless test command was generated:
-
-    powershell.exe -NoProfile -Command "Write-Output 'POWERSHELL_WAZUH_TEST_20260913'"
-
-Output:
-
-`POWERSHELL_WAZUH_TEST_20260913`
-
-The local PowerShell Operational log was checked:
-
-    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational';Id=4104;StartTime=(Get-Date).AddMinutes(-5)} | Where-Object {$_.Message -match 'POWERSHELL_WAZUH_TEST_20260913'} | Select-Object -First 3 TimeCreated,Id,Message
-
-Result:
-
-Event ID:
-
-`4104`
-
-This confirmed the test was captured locally.
-
----
-
-# 14. Initial SIEM Alert Search
-
-The SIEM alert log was searched for the PowerShell marker.
-
-The marker was visible through Sysmon process creation telemetry, but not through the PowerShell provider.
-
-This highlighted an important distinction:
-
-Wazuh may receive an event without necessarily generating an alert for it.
-
-The absence of the PowerShell event from the alert log did not prove collection failure.
-
----
-
-# 15. PowerShell Registry Test
-
-A harmless registry test was created under the current user's profile:
-
-    New-Item -Path "HKCU:\Software\CyberLab-WazuhTest" -Force | Out-Null; New-ItemProperty -Path "HKCU:\Software\CyberLab-WazuhTest" -Name "DetectionTest" -Value 1 -PropertyType DWord -Force
-
-Because the existing PowerShell session had been open before Script Block Logging was enabled, the first attempt did not generate a new 4104 event.
-
-A fresh PowerShell process was used:
-
-    powershell.exe -NoProfile -Command "New-Item -Path 'HKCU:\Software\CyberLab-WazuhTest' -Force | Out-Null; New-ItemProperty -Path 'HKCU:\Software\CyberLab-WazuhTest' -Name 'DetectionTest2' -Value 2 -PropertyType DWord -Force"
-
-The local PowerShell Operational log confirmed:
-
-`Event ID 4104`
-
-This demonstrated that newly launched PowerShell processes were applying the Script Block Logging policy correctly.
-
----
-
-# 16. Why Raw Event Archiving Was Needed
-
-Wazuh alert logs only contain events that trigger alert rules.
-
-To prove the PowerShell 4104 event was actually reaching the manager, raw JSON event archiving was temporarily enabled on `LAB-SIEM-01`.
-
-Before changing the SIEM configuration, disk space was checked:
-
-    df -h /
-
-Approximate result:
-
-- Root filesystem: 53 GB
-- Used: 25 GB
-- Available: 26 GB
-- Usage: 50%
-
-This confirmed enough temporary storage was available.
-
----
-
-# 17. Wazuh Manager Configuration Backup
-
-Before modifying raw-event settings, the manager configuration was backed up:
-
-    sudo cp /var/ossec/etc/ossec.conf /var/ossec/etc/ossec.conf.pre-powershell-test.bak
-
----
-
-# 18. Existing Raw Archive Settings
-
-The manager configuration was checked:
-
-    sudo grep -nE 'logall|logall_json' /var/ossec/etc/ossec.conf
-
-Initial values:
-
-    <logall>no</logall>
-    <logall_json>no</logall_json>
-
-This confirmed raw event archiving was disabled by default.
-
----
-
-# 19. Temporary Raw JSON Archiving
-
-Several initial `sed` attempts failed due to command syntax.
-
-The working command used was:
-
-    sudo sed -i '/<logall_json>/s/>no</>yes</' /var/ossec/etc/ossec.conf
-
-The configuration was then verified:
-
-    sudo grep -nE 'logall|logall_json' /var/ossec/etc/ossec.conf
-
-Result:
-
-    <logall>no</logall>
-    <logall_json>yes</logall_json>
-
-Only JSON raw-event archiving was enabled.
-
----
-
-# 20. Wazuh Manager Restart
-
-The manager was restarted:
-
-    sudo systemctl restart wazuh-manager
-
-Health was verified:
-
-    sudo systemctl is-active wazuh-manager
-
-Result:
-
-`active`
-
----
-
-# 21. Final Raw Archive Test
-
-A new PowerShell test was generated:
-
-    powershell.exe -NoProfile -Command "Write-Output 'POWERSHELL_RAWARCHIVE_TEST_20260913'"
-
-The local system produced a new 4104 event.
-
----
-
-# 22. Wazuh Raw Archive Discovery
-
-After raw archiving was enabled, the archive location was identified:
-
-    sudo find /var/ossec/logs -maxdepth 3 -iname '*archive*' -print
-
-Results included:
-
-`/var/ossec/logs/archives`
-
-`/var/ossec/logs/archives/archives.json`
-
-`/var/ossec/logs/archives/archives.log`
-
----
-
-# 23. Definitive SIEM Verification
-
-The raw archive was searched for the test marker and filtered for the PowerShell provider:
-
-    sudo grep -F "POWERSHELL_RAWARCHIVE_TEST_20260913" /var/ossec/logs/archives/archives.json | grep -F "Microsoft-Windows-PowerShell"
-
-The output showed the actual event from:
-
-Agent:
-
-`LAB-WIN-01`
-
-IP:
+Final workstation address:
 
 `10.10.20.20`
 
-Provider:
+Final zone:
 
-`Microsoft-Windows-PowerShell`
+`CORPNET`
 
-Channel:
+Wazuh agent:
 
-`Microsoft-Windows-PowerShell/Operational`
+`ID 001 — LAB-WIN-01`
 
-Event ID:
-
-`4104`
-
-Message included:
-
-`Creating Scriptblock text (1 of 1)`
-
-and the exact test marker:
-
-`POWERSHELL_RAWARCHIVE_TEST_20260913`
-
-This conclusively proved the complete telemetry path.
-
----
-
-# 24. Verified PowerShell Telemetry Path
-
-The final verified path is:
-
-    LAB-WIN-01
-         |
-    PowerShell
-         |
-    Event ID 4104
-         |
-    Microsoft-Windows-PowerShell/Operational
-         |
-      Wazuh Agent
-         |
-       CORPNET
-         |
-      OPNsense
-         |
-       SOCNET
-         |
-    LAB-SIEM-01
-         |
-    Wazuh Manager
-         |
-    Raw Event Archive
-
-This path was independently verified.
-
----
-
-# 25. Raw Archiving Disabled Again
-
-Because raw event archiving can generate significant disk usage, it was disabled immediately after verification.
-
-Command:
-
-    sudo sed -i '/<logall_json>/s/>yes</>no</' /var/ossec/etc/ossec.conf
-
-Configuration was verified:
-
-    sudo grep -nE 'logall|logall_json' /var/ossec/etc/ossec.conf
-
-Final values:
-
-    <logall>no</logall>
-    <logall_json>no</logall_json>
-
-The manager was restarted:
-
-    sudo systemctl restart wazuh-manager
-
-Health verification:
-
-    sudo systemctl is-active wazuh-manager
-
-Result:
-
-`active`
-
----
-
-# 26. Temporary Registry Test Cleanup
-
-The temporary registry test key was removed:
-
-    Remove-Item "HKCU:\Software\CyberLab-WazuhTest" -Recurse -Force
-
-This returned the Windows endpoint to a clean state.
-
----
-
-# 27. Post-Deployment Snapshot
-
-LAB-WIN-01 was shut down normally.
-
-A powered-off snapshot was created:
-
-`Windows - PowerShell 4104 Wazuh Verified`
-
-This snapshot represents the known-good Windows endpoint state after:
-
-- Sysmon integration
-- PowerShell Script Block Logging
-- Wazuh PowerShell event collection
-- Verified 4104 telemetry
-- End-to-end SIEM transport validation
-
----
-
-# 28. Current Windows Telemetry Capabilities
-
-LAB-WIN-01 now provides:
-
-- Sysmon telemetry
-- Process creation logging
-- PowerShell Script Block Logging
-- Event ID 4104 collection
-- Wazuh endpoint forwarding
-- Cross-zone telemetry through OPNsense
-- SIEM ingestion
-- Verified raw-event transport
-- Detection-ready PowerShell telemetry
-
----
-
-# 29. Key Lessons
-
-## Alerts Are Not the Same as Raw Events
-
-A telemetry event may reach Wazuh without triggering an alert rule.
-
-This is why raw-event verification was required.
-
-## Validate Every Layer
-
-The troubleshooting process verified:
-
-1. PowerShell generated the event
-2. Windows logged Event ID 4104
-3. Wazuh Agent opened the PowerShell channel
-4. The event crossed the network
-5. Wazuh Manager received the event
-6. Raw archive proved the actual event arrived
-
-## Avoid Leaving Raw Archiving Enabled
-
-`logall_json=yes` is useful for controlled troubleshooting, but can create significant disk growth.
-
-It should remain disabled unless specifically needed.
-
-## New PowerShell Processes Matter
-
-After enabling Script Block Logging, a new PowerShell process may be required before the policy takes effect reliably.
-
----
-
-# 30. Current Status
-
-Script Block Logging:
-
-`Enabled`
-
-Registry policy:
-
-`Verified`
-
-Event ID 4104:
-
-`Verified`
-
-PowerShell Operational log:
-
-`Operational`
-
-Wazuh PowerShell channel:
-
-`Verified`
-
-Wazuh Agent:
-
-`Running`
-
-Wazuh Manager:
+Status:
 
 `Active`
 
-Raw event verification:
-
-`Completed`
-
-Raw JSON archiving:
-
-`Disabled after testing`
-
-Temporary registry key:
-
-`Removed`
-
-Post-deployment snapshot:
-
-`Created`
-
-End-to-end PowerShell telemetry:
-
-`Verified`
+PowerShell logging became one component of the broader Windows endpoint-monitoring strategy.
 
 ---
 
-# 31. Next Improvements
+# PowerShell Monitoring Architecture
 
-Future Windows telemetry improvements may include:
+The final monitoring path is:
 
-- PowerShell Module Logging
-- PowerShell Transcription
-- Process command-line auditing
-- Advanced Audit Policy
-- Logon/logoff auditing
-- Account-management auditing
-- Windows Defender event collection
-- Scheduled-task monitoring
-- Service-install monitoring
-- Custom Wazuh PowerShell rules
-- MITRE ATT&CK mapping
-- Controlled PowerShell attack simulations
-- Detection engineering
-- SOC investigation exercises
+    PowerShell Activity
+          |
+          v
+    Windows PowerShell Logs
+          |
+          +--> Script Block Logging
+          |
+          +--> Module Logging
+          |
+          +--> Transcription
+          |
+          v
+    Wazuh Agent
+          |
+          v
+    LAB-SIEM-01
+          |
+          v
+    SOC Investigation
+
+Sysmon provides an additional process-level view.
 
 ---
 
-# 32. PowerShell Module Logging Deployment
+# Script Block Logging
 
-## 32.1 Objective
+Script Block Logging was enabled to capture PowerShell code as it is processed.
 
-After successfully deploying and verifying PowerShell Script Block Logging, the next Windows telemetry improvement was PowerShell Module Logging.
+This provides deeper visibility than simply recording the launch of:
 
-PowerShell Module Logging provides additional visibility into PowerShell command and module execution.
+`powershell.exe`
 
-The primary event used during this phase was:
+or:
+
+`pwsh.exe`
+
+It can help expose:
+
+- executed commands
+- script content
+- encoded or reconstructed logic
+- administrative scripts
+- attacker-created PowerShell activity
+
+---
+
+# Why Script Block Logging Matters
+
+Consider an event where only process execution is recorded:
+
+    powershell.exe
+
+This tells the analyst that PowerShell ran.
+
+Script Block Logging can provide additional context about what PowerShell actually processed.
+
+The combination therefore provides much stronger investigation value.
+
+---
+
+# Script Block Event Context
+
+PowerShell Script Block Logging commonly produces events in the PowerShell Operational event channel.
+
+An important event associated with this capability is:
+
+`Event ID 4104`
+
+This event can contain PowerShell script-block content.
+
+For future SOC exercises, this can help identify:
+
+- suspicious commands
+- obfuscated PowerShell
+- reconnaissance
+- download activity
+- persistence-related commands
+
+---
+
+# Module Logging
+
+PowerShell Module Logging was also enabled.
+
+The final configuration includes:
+
+`*`
+
+as the module scope.
+
+This provides broad visibility into commands executed through PowerShell modules.
+
+---
+
+# Why Module Logging Matters
+
+PowerShell commands may execute through modules rather than through standalone scripts.
+
+Module Logging helps provide additional information around:
+
+- cmdlets
+- module-based administration
+- command execution
+
+This complements Script Block Logging.
+
+---
+
+# Module Logging Event Context
+
+PowerShell Module Logging is commonly associated with:
 
 `Event ID 4103`
 
-The objective was to verify the complete telemetry path:
+This can provide details about module-based command execution.
 
-`PowerShell Module Activity -> Event ID 4103 -> PowerShell Operational Log -> Wazuh Agent -> CORPNET -> OPNsense -> SOCNET -> Wazuh Manager`
+Together:
 
----
+    Event 4103
+        +
+    Event 4104
 
-## 32.2 Initial Module Logging State
-
-The existing Module Logging configuration was checked on `LAB-WIN-01`.
-
-Result:
-
-`PowerShell Module Logging: Not configured`
-
-This established the pre-deployment baseline.
+provide valuable PowerShell investigation context.
 
 ---
 
-## 32.3 Enabling Module Logging
+# PowerShell Transcription
 
-The following registry path was created:
+PowerShell transcription was introduced as another layer of visibility.
 
-`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging`
+Transcription records session output and command activity in text-based transcript files.
 
-The `ModuleNames` subkey was also created:
-
-`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames`
-
-Module Logging was enabled with:
-
-`EnableModuleLogging = 1`
-
-A wildcard module configuration was created:
-
-`* = *`
-
-This configured Module Logging for all PowerShell modules.
+This provides an additional investigation source outside normal Windows event logging.
 
 ---
 
-## 32.4 Configuration Verification
+# Why Transcription Was Added
 
-The Module Logging policy was queried after configuration.
+Event logs provide structured telemetry.
 
-Result:
+Transcripts can provide a more human-readable record of an interactive PowerShell session.
 
-`EnableModuleLogging = 1`
+This can help during:
 
-The `ModuleNames` configuration was also queried.
-
-Result:
-
-`* : *`
-
-This confirmed that Module Logging was enabled and configured to monitor all modules.
+- incident review
+- administrative troubleshooting
+- attack reconstruction
+- command-sequence analysis
 
 ---
 
-## 32.5 Local Event Generation Test
+# Transcription and Event Logging
 
-A fresh Windows PowerShell process was launched with:
+PowerShell transcription does not replace:
 
-`powershell.exe -NoProfile -Command "Get-Process | Select-Object -First 3"`
+- Script Block Logging
+- Module Logging
+- Sysmon
+- Windows process auditing
 
-The PowerShell Operational event log was queried for Event ID 4103.
+Instead, it provides another independent source of evidence.
 
-Events were successfully generated, including:
-
-`CommandInvocation(Get-Process)`
-
-This provided initial confirmation that Module Logging was functioning locally.
-
----
-
-## 32.6 Initial Wazuh Verification Attempt
-
-The Wazuh raw archive was initially searched for Event ID 4103.
-
-No matching output was observed.
-
-The Wazuh alerts log was also checked, but no 4103 alert was generated.
-
-This did not prove telemetry failure because Wazuh alert logs contain rule-triggering events rather than every event received by the manager.
-
-Further investigation was therefore performed.
+The design intentionally uses multiple overlapping telemetry sources.
 
 ---
 
-## 32.7 Wazuh Agent Troubleshooting
+# Defense-in-Depth Logging
 
-The Windows Wazuh agent log was inspected using PowerShell.
+The PowerShell monitoring approach can be represented as:
 
-Historical entries showed that on September 14 the agent had temporarily experienced connectivity problems to:
+    powershell.exe
+          |
+          +--> Sysmon ProcessCreate
+          |
+          +--> Windows Process Creation Audit
+          |
+          +--> PowerShell Module Logging
+          |
+          +--> PowerShell Script Block Logging
+          |
+          +--> PowerShell Transcript
+          |
+          v
+    Wazuh / SOC Investigation
 
-`10.10.40.10:1514/tcp`
-
-Historical messages included:
-
-`Unable to connect`
-
-and:
-
-`Process locked due to agent is offline`
-
-A historical message also indicated that the Windows Event Log service had temporarily been unavailable.
-
-However, current September 15 logs showed:
-
-`Analyzing event log: 'Microsoft-Windows-PowerShell/Operational'.`
-
-This confirmed that the Wazuh agent was currently monitoring the required PowerShell event channel.
+A single attacker action can therefore produce multiple pieces of evidence.
 
 ---
 
-## 32.8 Current Wazuh Connection Verification
+# Wazuh Integration
 
-The Wazuh agent connection state was checked.
+PowerShell telemetry from the Windows endpoint is collected through the Wazuh agent.
 
-The current agent log showed:
-
-`Connected to the server ([10.10.40.10]:1514/tcp).`
-
-This confirmed that:
-
-- LAB-WIN-01 could reach LAB-SIEM-01
-- TCP 1514 connectivity was operational
-- OPNsense policy allowed the required Wazuh traffic
-- The Wazuh agent was connected to the manager
-
-The earlier connectivity errors were therefore historical rather than an active failure.
-
----
-
-## 32.9 Fresh 4103 Test
-
-A new PowerShell process was used to generate fresh Module Logging telemetry:
-
-`powershell.exe -NoProfile -Command "Get-Service WazuhSvc | Select-Object Name,Status"`
-
-Result:
-
-`WazuhSvc Running`
-
-The local PowerShell Operational log was queried immediately afterward.
-
-Multiple Event ID 4103 records were observed, including:
-
-`CommandInvocation(Get-Service)`
-
-This definitively confirmed local Module Logging operation.
-
----
-
-## 32.10 Controlled Raw Archive Verification
-
-Because the 4103 events did not necessarily trigger Wazuh alert rules, raw JSON archiving was temporarily enabled again for controlled troubleshooting.
-
-The Wazuh Manager configuration was changed temporarily from:
-
-`<logall_json>no</logall_json>`
-
-to:
-
-`<logall_json>yes</logall_json>`
-
-The configuration was verified before restarting Wazuh Manager.
-
-After the restart:
-
-`sudo systemctl is-active wazuh-manager`
-
-returned:
-
-`active`
-
-A new 4103 test event was then generated from LAB-WIN-01.
-
----
-
-## 32.11 Case-Sensitive Search Troubleshooting
-
-An initial Linux `grep` search appeared to return no PowerShell events.
-
-The issue was traced to capitalization in the search string.
-
-Linux `grep` performs case-sensitive matching by default.
-
-For example:
-
-`PowerShell`
-
-and:
-
-`Powershell`
-
-are treated as different strings.
-
-After correcting the capitalization, Wazuh raw archive data containing PowerShell Module Logging events was successfully located.
-
-This provided an important Linux command-line lesson:
-
-`grep -F` performs fixed-string, case-sensitive matching.
-
-For case-insensitive searches, the `-i` option can be used, for example:
-
-`grep -Fi 'powershell' file`
-
----
-
-## 32.12 Definitive Event ID 4103 Verification
-
-The Wazuh raw archive contained events with:
-
-- Agent: `LAB-WIN-01`
-- Agent IP: `10.10.20.20`
-- Provider: `Microsoft-Windows-PowerShell`
-- Channel: `Microsoft-Windows-PowerShell/Operational`
-- Event ID: `4103`
-- Location: `EventChannel`
-
-Module Logging information included PowerShell command invocation data such as:
-
-`CommandInvocation(Set-StrictMode)`
-
-and other PowerShell module activity.
-
-This conclusively proved that Event ID 4103 telemetry was reaching Wazuh.
-
----
-
-## 32.13 Verified Module Logging Telemetry Path
-
-The final verified path is:
-
-`LAB-WIN-01`
-
-↓
-
-`PowerShell Module Logging`
-
-↓
-
-`Event ID 4103`
-
-↓
-
-`Microsoft-Windows-PowerShell/Operational`
-
-↓
-
-`Wazuh Agent`
-
-↓
-
-`CORPNET - 10.10.20.0/24`
-
-↓
-
-`OPNsense`
-
-↓
-
-`SOCNET - 10.10.40.0/24`
-
-↓
+Destination:
 
 `LAB-SIEM-01`
 
-↓
+Address:
 
-`Wazuh Manager`
+`10.10.40.10`
 
-↓
+Primary communication:
 
-`Raw Event Archive`
+`TCP/1514`
 
-Status:
-
-`VERIFIED`
+This makes PowerShell events available for centralized investigation.
 
 ---
 
-## 32.14 Raw Archive Cleanup
+# PowerShell Event Visibility in Wazuh
 
-Raw JSON archiving was enabled only for controlled verification.
+The lab was designed so PowerShell telemetry could be reviewed alongside:
 
-After successful 4103 verification, the configuration was restored to:
-
-`<logall>no</logall>`
-
-`<logall_json>no</logall_json>`
-
-Wazuh Manager was restarted.
-
-Final health check:
-
-`sudo systemctl is-active wazuh-manager`
-
-Result:
-
-`active`
-
-Raw JSON collection therefore remains disabled during normal lab operation to prevent unnecessary SIEM disk growth.
-
----
-
-## 32.15 Post-Deployment Snapshot
-
-LAB-WIN-01 was shut down normally after successful verification.
-
-A powered-off VirtualBox snapshot was created:
-
-`Windows - PowerShell 4103 Module Logging Verified`
-
-This provides a known-good rollback point containing:
-
-- Wazuh Agent
 - Sysmon
-- PowerShell Script Block Logging
-- Event ID 4104 collection
-- PowerShell Module Logging
-- Event ID 4103 collection
-- Verified Wazuh telemetry
+- Security events
+- Windows Firewall events
+- Defender telemetry
+- File Integrity Monitoring
+
+This allows an analyst to reconstruct activity across multiple data sources.
 
 ---
 
-# 33. Current PowerShell Security Telemetry
+# Example Investigation Relationship
 
-LAB-WIN-01 currently provides two complementary PowerShell telemetry sources.
+A suspicious PowerShell sequence could produce:
 
-### Script Block Logging
+    User Logon
+        |
+        v
+    Event 4672 / Logon Context
+        |
+        v
+    powershell.exe Process Creation
+        |
+        v
+    Sysmon Event
+        |
+        v
+    PowerShell Event 4103 / 4104
+        |
+        v
+    Network Activity
+        |
+        v
+    Firewall or Suricata Evidence
+        |
+        v
+    Wazuh Investigation
 
-Event ID:
+This is the kind of multi-source correlation the lab was built to support.
 
-`4104`
+---
+
+# Advanced Windows Auditing Relationship
+
+PowerShell logging was implemented alongside advanced Windows auditing.
+
+The workstation audit baseline includes:
+
+- Logon — Success and Failure
+- Process Creation — Success
+- Special Logon — Success
+
+Command-line process creation was also enabled.
+
+This provides additional evidence around PowerShell execution.
+
+---
+
+# Command-Line Process Auditing
+
+Command-line process auditing helps capture how PowerShell was launched.
+
+For example:
+
+    powershell.exe -NoProfile ...
+
+This information can complement Script Block Logging.
+
+Even if PowerShell activity is incomplete in one telemetry source, another source may preserve useful context.
+
+---
+
+# Sysmon Relationship
+
+Sysmon also monitors PowerShell execution.
+
+Important executables include:
+
+- `powershell`
+- `pwsh`
+
+Sysmon adds process-level context such as:
+
+- parent process
+- process execution
+- executable path
+- surrounding process activity
+
+This is complementary to the content-oriented PowerShell logs.
+
+---
+
+# Microsoft Defender Relationship
+
+Microsoft Defender telemetry was also included in the Windows monitoring stack.
+
+If PowerShell activity triggers a security detection, Wazuh may therefore have evidence from:
+
+- PowerShell
+- Sysmon
+- Defender
+- Windows Security logs
+
+This improves confidence during investigation.
+
+---
+
+# File Integrity Monitoring Relationship
+
+PowerShell can also be used to create or modify files.
+
+Wazuh File Integrity Monitoring may provide another source of evidence if monitored files or directories are changed.
+
+Potential investigation chain:
+
+    PowerShell
+        |
+        v
+    File Creation / Modification
+        |
+        v
+    Wazuh FIM
+        |
+        v
+    Detection / Investigation
+
+---
+
+# Initial Local Configuration Phase
+
+Before Active Directory Group Policy was introduced, enhanced PowerShell logging was configured directly on the Windows endpoint.
+
+This allowed the telemetry design to be:
+
+- tested
+- verified
+- integrated into Wazuh
+
+before central policy management existed.
+
+This was an important intermediate phase.
+
+---
+
+# Active Directory Introduction
+
+Active Directory was added later in the project.
+
+Domain:
+
+`cyberlab.internal`
+
+Domain Controller:
+
+`LAB-DC-01`
+
+The Windows workstation became a domain member.
+
+This created an opportunity to move security settings from local-only configuration into centrally managed Group Policy.
+
+---
+
+# Workstation Security Baseline
+
+A Group Policy Object was created:
+
+`GPO-Workstation-Security-Baseline`
+
+It was linked to:
+
+`CyberLab\Workstations`
+
+The GPO included PowerShell logging controls.
+
+---
+
+# Script Block Logging Through Group Policy
+
+The workstation baseline enables:
+
+`PowerShell Script Block Logging`
+
+This ensures the setting is centrally enforced rather than depending only on local workstation configuration.
+
+---
+
+# Module Logging Through Group Policy
+
+The workstation baseline also enables:
+
+`PowerShell Module Logging`
+
+Module coverage:
+
+`*`
+
+This provides broad monitoring of PowerShell module activity.
+
+---
+
+# Why Group Policy Improved the Design
+
+Moving PowerShell controls into Group Policy provided several benefits.
+
+## Centralization
+
+Security settings are controlled from Active Directory.
+
+## Consistency
+
+A workstation cannot silently drift from the desired baseline as easily.
+
+## Scalability
+
+Additional domain workstations could receive the same policy.
+
+## Realism
+
+This mirrors enterprise security administration more closely than configuring every workstation manually.
+
+---
+
+# Group Policy Validation
+
+The GPO was successfully applied to:
+
+`LAB-WIN-01`
+
+This confirmed:
+
+- domain communication
+- correct workstation OU placement
+- functional Group Policy
+- PowerShell monitoring policy delivery
 
 Status:
 
-`Enabled and end-to-end verified`
-
-Purpose:
-
-Provides visibility into PowerShell script-block content.
-
-### Module Logging
-
-Event ID:
-
-`4103`
-
-Status:
-
-`Enabled and end-to-end verified`
-
-Purpose:
-
-Provides visibility into PowerShell module and command invocation activity.
-
-Together, these provide significantly stronger PowerShell visibility than the default Windows logging configuration.
+**PASS**
 
 ---
 
-# 34. Troubleshooting Lessons
+# Local Configuration vs Domain Policy
 
-This phase reinforced several operational principles.
+The history of the project therefore includes two phases.
 
-### Historical Errors Must Be Distinguished From Current Errors
+## Earlier Phase
 
-Old Wazuh connectivity errors were present in the agent log, but current entries confirmed that the agent had recovered.
+PowerShell logging was configured locally as part of endpoint-hardening work.
 
-Timestamps must therefore be considered before diagnosing an active failure.
+## Final Phase
 
-### Verify Every Layer Independently
+PowerShell Script Block Logging and Module Logging became part of the domain-managed workstation baseline.
 
-The investigation checked:
-
-`Command execution -> Local event -> Event channel -> Wazuh collector -> Agent connection -> Network path -> SIEM raw event`
-
-This prevented incorrect conclusions about where the problem existed.
-
-### Linux Is Case-Sensitive
-
-Search strings must use the correct capitalization unless case-insensitive matching is explicitly requested.
-
-### Alerts and Events Are Different
-
-An event can reach Wazuh successfully without generating an alert.
-
-Raw-event verification can therefore be valuable during controlled troubleshooting.
-
-### Configuration Changes Require Verification
-
-The workflow used throughout this phase was:
-
-`Backup -> Change -> Verify -> Restart -> Verify Service -> Generate Test -> Verify Telemetry -> Restore Temporary Settings`
+The final Group Policy configuration is the authoritative security baseline.
 
 ---
 
-# 35. Module Logging Milestone Status
+# PowerShell Transcription in the Final Design
 
-PowerShell Module Logging:
+PowerShell transcription remains part of the endpoint-monitoring strategy.
 
-`ENABLED`
+Unlike Script Block and Module Logging, transcription produces text-based session records.
 
-All-module wildcard:
-
-`CONFIGURED`
-
-Event ID 4103 generated locally:
-
-`VERIFIED`
-
-PowerShell Operational channel:
-
-`MONITORED`
-
-Wazuh Agent connection:
-
-`VERIFIED`
-
-Event ID 4103 received by Wazuh:
-
-`VERIFIED`
-
-Raw archive troubleshooting:
-
-`COMPLETED`
-
-Raw JSON archiving returned to disabled:
-
-`VERIFIED`
-
-Wazuh Manager:
-
-`ACTIVE`
-
-Powered-off snapshot:
-
-`Windows - PowerShell 4103 Module Logging Verified`
-
-Overall status:
-
-`POWERShell MODULE LOGGING END-TO-END VERIFIED`
+This provides a useful secondary evidence source for future investigations.
 
 ---
 
-# 36. Next Phase
+# PowerShell and Purple Team Operations
 
-The next Windows telemetry phase is:
+The final PowerShell monitoring environment is designed to support future simulations involving:
 
-`PowerShell Transcription`
+- reconnaissance
+- encoded PowerShell
+- suspicious downloads
+- user and group enumeration
+- persistence
+- process execution
+- administrative abuse
+- attacker scripting
 
-After PowerShell telemetry is completed, planned Windows monitoring improvements include:
+The purpose is not simply to generate logs.
 
-- Process Creation auditing
-- Command-line auditing
-- Advanced Windows Audit Policy
-- Windows Defender Operational telemetry
-- Windows Firewall telemetry
-- Authentication monitoring
-- Account-management monitoring
-- Scheduled-task monitoring
-- Service-install monitoring
+The objective is to determine whether security analysts can:
 
-The long-term objective remains:
-
-`Generate -> Collect -> Forward -> Detect -> Investigate -> Respond -> Document`
-
----
-
-## 37. PowerShell Transcription
-
-After successfully implementing and validating PowerShell Script Block Logging (Event ID 4104) and PowerShell Module Logging (Event ID 4103), PowerShell Transcription was enabled on `LAB-WIN-01`.
-
-The purpose of PowerShell Transcription is to maintain text-based records of PowerShell sessions, including executed commands and command output.
-
-This provides an additional telemetry source alongside Windows Event Log-based PowerShell monitoring.
-
-The resulting telemetry architecture now includes:
-
-- PowerShell Module Logging — Event ID 4103
-- PowerShell Script Block Logging — Event ID 4104
-- PowerShell Transcription — text-based session transcripts
-- Sysmon — process and system telemetry
-- Wazuh — centralized monitoring and File Integrity Monitoring
+1. detect the activity
+2. reconstruct what happened
+3. identify the user and process
+4. correlate the event with other telemetry
+5. improve detection coverage
 
 ---
 
-## 38. PowerShell Transcription Baseline
+# Potential Detection Workflow
 
-Before enabling transcription, the following registry path was checked:
+A future Purple Team scenario could follow:
 
-`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription`
+    Controlled PowerShell Attack
+              |
+              v
+        Process Execution
+              |
+              +--> Sysmon
+              |
+              +--> Windows Audit
+              |
+              +--> Module Logging
+              |
+              +--> Script Block Logging
+              |
+              +--> Transcript
+              |
+              v
+          Wazuh SIEM
+              |
+              v
+        Alert Investigation
+              |
+              v
+        Detection Tuning
 
-The baseline result was:
-
-`PowerShell Transcription: Not configured`
-
-This confirmed that system-wide PowerShell Transcription had not previously been configured.
-
----
-
-## 39. Transcript Storage Directory
-
-A dedicated directory was created for PowerShell transcripts:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-The directory provides a centralized location for transcript files generated by PowerShell sessions on `LAB-WIN-01`.
-
-PowerShell automatically creates date-based subdirectories beneath this location.
-
-During testing, transcripts were generated beneath:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\20260917\`
-
----
-
-## 40. PowerShell Transcription Policy Configuration
-
-The following registry policy path was created:
-
-`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription`
-
-The following policy values were configured:
-
-- `EnableTranscripting = 1`
-- `EnableInvocationHeader = 1`
-- `OutputDirectory = C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-The configuration was subsequently queried and verified.
-
-The verified state was:
-
-`EnableTranscripting = 1`
-
-`EnableInvocationHeader = 1`
-
-`OutputDirectory = C:\ProgramData\CyberLab\PowerShellTranscripts`
+This reflects the final purpose of the logging infrastructure.
 
 ---
 
-## 41. Controlled PowerShell Transcription Test
+# Security Value
 
-A fresh PowerShell process was started with the following benign test marker:
+Enhanced PowerShell logging provides several important defensive benefits.
 
-`CYBERLAB_TRANSCRIPTION_TEST_20260917`
+## Visibility
 
-The test command successfully returned the marker to the console.
+Analysts can see more than just the PowerShell executable.
 
-A search of the transcript directory located the corresponding transcript file.
+## Attribution
 
-The generated transcript recorded:
+Events can be connected to user and host activity.
 
-- Transcript start time
-- Username
-- RunAs user
-- Computer name
-- Host application
-- Process ID
-- PowerShell version
-- Executed PowerShell command
-- Command output
-- Transcript end time
+## Investigation
 
-The controlled test transcript contained:
+Commands and script content can help reconstruct an incident.
 
-`PS>Write-Output 'CYBERLAB_TRANSCRIPTION_TEST_20260917'`
+## Detection Engineering
 
-and the resulting output:
+Real telemetry can be used to create Wazuh rules.
 
-`CYBERLAB_TRANSCRIPTION_TEST_20260917`
+## Threat Hunting
 
-This confirmed that PowerShell Transcription was functioning locally.
+Historical PowerShell activity can be searched for suspicious patterns.
 
 ---
 
-## 42. System-Wide Transcription Observation
+# Operational Considerations
 
-During transcript inspection, an additional transcript generated by a PowerShell process running as:
+Enhanced PowerShell logging increases telemetry volume.
 
-`WORKGROUP\SYSTEM`
+The objective is not to enable every possible Windows event indiscriminately.
 
-was discovered.
+The project uses layered logging so that useful context can be collected without relying on one source.
 
-This demonstrated that the configured transcription policy was not limited to the interactive test session.
+As realistic simulations begin, PowerShell logging may be tuned further based on:
 
-It also demonstrated an important investigation principle:
-
-Selecting only the newest transcript does not necessarily identify the transcript associated with a specific user or investigation.
-
-Unique markers, timestamps, usernames, process information, and content searches may be required to identify the correct transcript.
-
----
-
-## 43. PowerShell Object and Variable Investigation
-
-During transcript analysis, PowerShell variables and object properties were used to locate and inspect transcript files.
-
-A file object was stored in a variable and its `FullName` property was used to retrieve the complete filesystem path.
-
-A separate variable was used to store the path of the transcript containing the controlled marker.
-
-This reinforced the PowerShell workflow:
-
-`Command output → Object → Variable → Property → Subsequent command`
-
-This differs from many traditional Linux pipelines, where commands commonly exchange and process text streams.
+- detection value
+- noise
+- SIEM storage
+- analyst usefulness
 
 ---
 
-## 44. Transcript Directory Permission Review
+# Final Monitoring Stack on LAB-WIN-01
 
-The Access Control List for the transcript directory was inspected before integrating the directory with Wazuh.
+The final workstation security telemetry includes:
 
-The directory owner was:
-
-`BUILTIN\Administrators`
-
-Observed permissions included:
-
-- `NT AUTHORITY\SYSTEM` — FullControl
-- `BUILTIN\Administrators` — FullControl
-- `CREATOR OWNER` — special creator permissions
-- `BUILTIN\Users` — ReadAndExecute, Synchronize
-- `BUILTIN\Users` — Write
-
-No ACL modifications were performed during this phase.
-
-The existing permissions were documented rather than changed blindly because PowerShell sessions operating under normal user contexts must be able to create transcript files.
-
-Further transcript storage hardening can be evaluated separately.
-
----
-
-## 45. Transcript Security Considerations
-
-PowerShell transcripts may contain:
-
-- Commands
-- Command arguments
-- Command output
-- File paths
-- Administrative information
-- Potentially sensitive operational data
-
-Because of this, transcript content was not automatically forwarded in full to the SIEM during this phase.
-
-Instead, Wazuh File Integrity Monitoring was selected as the initial monitoring strategy.
-
-This provides visibility into transcript file creation, modification, and deletion without intentionally ingesting every transcript's full text content into the SIEM.
-
-The resulting design separates:
-
-- PowerShell event telemetry from Event IDs 4103 and 4104
-- PowerShell transcript storage on the endpoint
-- File-integrity monitoring of transcript files
+    LAB-WIN-01
+        |
+        +--> Windows Security Logs
+        |
+        +--> Advanced Auditing
+        |
+        +--> Command-Line Process Auditing
+        |
+        +--> Sysmon
+        |
+        +--> PowerShell Script Block Logging
+        |
+        +--> PowerShell Module Logging
+        |
+        +--> PowerShell Transcription
+        |
+        +--> Microsoft Defender
+        |
+        +--> Windows Firewall
+        |
+        +--> File Integrity Monitoring
+        |
+        v
+    Wazuh Agent
+        |
+        v
+    LAB-SIEM-01
 
 ---
 
-## 46. Wazuh Configuration Baseline
+# Final Validation Summary
 
-Before modifying Wazuh, the Windows agent configuration was searched for existing references to:
-
-`PowerShellTranscripts`
-
-No existing configuration was found.
-
-The Wazuh agent configuration was backed up as:
-
-`C:\Program Files (x86)\ossec-agent\ossec.conf.pre-transcription.bak`
-
-The existing `<localfile>` configuration was also inspected.
-
-Existing centralized event collection included:
-
-- Application
-- Security
-- System
-- Sysmon Operational
-- PowerShell Operational
-- Wazuh active-response logs
+| Validation | Result |
+|---|---|
+| PowerShell logging introduced | PASS |
+| Script Block Logging enabled | PASS |
+| Module Logging enabled | PASS |
+| Module scope `*` configured | PASS |
+| PowerShell transcription enabled | PASS |
+| Wazuh agent active | PASS |
+| PowerShell telemetry available to SOC | PASS |
+| Sysmon PowerShell process visibility | PASS |
+| Command-line process auditing | PASS |
+| Domain join completed | PASS |
+| Workstation security GPO applied | PASS |
+| Script Block Logging managed by GPO | PASS |
+| Module Logging managed by GPO | PASS |
 
 ---
 
-## 47. Existing Wazuh File Integrity Monitoring
+# Historical vs Current State
 
-The existing Wazuh `<syscheck>` configuration was inspected before making changes.
+This document intentionally preserves the full PowerShell logging lifecycle.
 
-File Integrity Monitoring was already enabled:
+Historical stages include:
 
-`<disabled>no</disabled>`
+- early Windows endpoint with limited PowerShell visibility
+- local-only administration
+- introduction of Wazuh
+- local enhanced PowerShell logging
+- Script Block Logging
+- Module Logging
+- transcription
+- integration with Sysmon and advanced auditing
+- Active Directory domain join
+- Group Policy enforcement
 
-The scheduled Syscheck frequency was:
+The authoritative current state is:
 
-`43200`
-
-This corresponds to a scheduled scan every 12 hours.
-
-The existing configuration also included real-time monitoring of the Windows Startup directory.
-
-Existing file exclusions included several extensions such as:
-
-- `.log`
-- `.htm`
-- `.jpg`
-- `.png`
-- `.chm`
-- `.pnf`
-- `.evtx`
-
-PowerShell transcripts use the `.txt` extension and were therefore not excluded by this existing rule.
-
----
-
-## 48. PowerShell Transcript Real-Time FIM Configuration
-
-The following entry was added to the existing Wazuh `<syscheck>` configuration:
-
-`<!-- PowerShell Transcription real-time File Integrity Monitoring -->`
-
-`<directories realtime="yes">C:\ProgramData\CyberLab\PowerShellTranscripts</directories>`
-
-This configured Wazuh to monitor the transcript directory using real-time File Integrity Monitoring rather than waiting for the normal 12-hour Syscheck interval.
-
-The Wazuh configuration was parsed as XML after the modification.
-
-Validation returned:
-
-`XML validation passed`
-
-The Wazuh Windows agent service was then restarted.
-
-Service verification confirmed:
-
-`WazuhSvc — Running`
+    Host: LAB-WIN-01
+    Zone: CORPNET
+    Domain: cyberlab.internal
+    Script Block Logging: Enabled
+    Module Logging: Enabled
+    Module Scope: *
+    Transcription: Enabled
+    Wazuh Monitoring: Active
+    Sysmon Monitoring: Active
+    Group Policy: GPO-Workstation-Security-Baseline
 
 ---
 
-## 49. Controlled Wazuh FIM File-Creation Test
+# Evolution Summary
 
-Before testing a genuine PowerShell transcript, an isolated FIM test was performed.
+PowerShell monitoring evolved through:
 
-A benign test file was created:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\WAZUH_FIM_TEST_20260917.txt`
-
-The file contained the marker:
-
-`CYBERLAB_WAZUH_FIM_TEST_20260917`
-
-Searching the local Windows Wazuh operational log for the filename returned no result.
-
-This was not treated as evidence of failure because Wazuh FIM events may be transmitted to the manager without the filename appearing in the local agent operational log.
-
-The event was therefore verified directly on `LAB-SIEM-01`.
-
----
-
-## 50. Wazuh FIM File-Creation Verification
-
-The Wazuh manager alert data confirmed detection of the newly created test file.
-
-Verified information included:
-
-- Agent: `LAB-WIN-01`
-- Agent IP: `10.10.20.20`
-- Rule ID: `554`
-- Rule description: `File added to the system.`
-- Syscheck event: `added`
-- Syscheck mode: `realtime`
-
-The monitored path was:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\WAZUH_FIM_TEST_20260917.txt`
-
-This proved that Wazuh was monitoring the transcript directory in real time.
+    Basic Local PowerShell Usage
+             |
+             v
+    Need for Better Visibility
+             |
+             v
+    Wazuh Endpoint Monitoring
+             |
+             v
+    Script Block Logging
+             |
+             v
+    Module Logging
+             |
+             v
+    PowerShell Transcription
+             |
+             v
+    Sysmon / Advanced Audit Correlation
+             |
+             v
+    Active Directory Domain Join
+             |
+             v
+    Group Policy Enforcement
+             |
+             v
+    Final SOC-Ready PowerShell Monitoring
 
 ---
 
-## 51. Wazuh FIM File-Deletion Verification
+# Final Status
 
-The temporary FIM test file was subsequently removed from `LAB-WIN-01`.
+The PowerShell logging infrastructure phase is complete.
 
-Wazuh detected the deletion.
+`LAB-WIN-01` now provides layered PowerShell telemetry through:
 
-Verified information included:
+- Script Block Logging
+- Module Logging
+- transcription
+- process auditing
+- Sysmon
+- Wazuh
 
-- Agent: `LAB-WIN-01`
-- Agent IP: `10.10.20.20`
-- Rule ID: `553`
-- Rule description: `File deleted.`
-- Syscheck event: `deleted`
-- Syscheck mode: `realtime`
+The configuration is centrally reinforced through Active Directory Group Policy.
 
-This verified that the monitoring configuration detected both creation and deletion events.
+The environment is ready for realistic PowerShell-based attack simulations, SOC investigations, threat hunting, and detection engineering.
 
----
-
-## 52. Genuine PowerShell Transcript FIM Test
-
-After validating FIM independently, a new PowerShell process was launched with the benign marker:
-
-`CYBERLAB_REAL_TRANSCRIPT_FIM_TEST_20260917`
-
-PowerShell returned the marker successfully.
-
-Because system-wide PowerShell Transcription was enabled, the process automatically generated a genuine transcript beneath:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\20260917\`
-
-No transcript file was manually created for this test.
-
----
-
-## 53. Genuine Transcript Wazuh Verification
-
-Wazuh detected the automatically generated PowerShell transcript.
-
-The verified event contained:
-
-- Rule ID: `550`
-- Rule description: `Integrity checksum changed.`
-- Agent: `LAB-WIN-01`
-- Syscheck mode: `realtime`
-- Syscheck event: `modified`
-
-The monitored path referenced a genuine automatically generated:
-
-`PowerShell_transcript....txt`
-
-file beneath:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\20260917\`
-
-The modification event is expected because PowerShell creates a transcript and continues writing additional session information into the file during the lifetime of the PowerShell process.
-
----
-
-## 54. Structured Wazuh JSON Analysis with jq
-
-Wazuh alerts on `LAB-SIEM-01` are stored as structured JSON.
-
-Initial searches used `grep`, but an important investigation issue was observed.
-
-Searching Wazuh alerts for the text:
-
-`powershell_transcript`
-
-also matched an alert generated by the analyst's own `sudo grep` command on `LAB-SIEM-01`.
-
-That event was associated with:
-
-`Successful sudo to ROOT executed.`
-
-This demonstrated that simple text searching can produce misleading matches when the search term itself appears inside another monitored command.
-
-Structured JSON filtering was therefore used with `jq`.
-
-Filtering on:
-
-`agent.name == "LAB-WIN-01"`
-
-and requiring:
-
-`syscheck.path != null`
-
-successfully isolated genuine Windows FIM events.
-
-The final structured output confirmed:
-
-- Rule: `Integrity checksum changed.`
-- Rule ID: `550`
-- Agent: `LAB-WIN-01`
-- PowerShell transcript path
-- Mode: `realtime`
-- Event: `modified`
-
-This demonstrated the value of field-based structured analysis over unrestricted text searching.
-
----
-
-## 55. Verified PowerShell Telemetry Architecture
-
-The Windows endpoint now provides multiple complementary PowerShell telemetry layers.
-
-### Module Logging
-
-PowerShell Module Logging records module and cmdlet invocation activity.
-
-Primary event:
-
-`4103`
-
-### Script Block Logging
-
-PowerShell Script Block Logging records PowerShell script block content.
-
-Primary event:
-
-`4104`
-
-### PowerShell Transcription
-
-PowerShell Transcription records text-based PowerShell session information, commands, and command output.
-
-Transcript location:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-### Wazuh File Integrity Monitoring
-
-Wazuh monitors the transcript repository for filesystem changes using real-time FIM.
-
-Verified FIM activity includes:
-
-- File creation
-- File deletion
-- Genuine PowerShell transcript modification
-
----
-
-## 56. Verified End-to-End Telemetry Flow
-
-The following telemetry path was successfully validated:
-
-`PowerShell Session`
-
-→ `PowerShell Transcription Policy`
-
-→ `Automatic Transcript File`
-
-→ `C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-→ `Wazuh Real-Time File Integrity Monitoring`
-
-→ `Wazuh Agent on LAB-WIN-01`
-
-→ `CORPNET`
-
-→ `OPNsense`
-
-→ `SOCNET`
-
-→ `Wazuh Manager on LAB-SIEM-01`
-
-→ `Syscheck/FIM Alert`
-
-This confirms that transcript integrity telemetry crosses the segmented lab architecture successfully.
-
----
-
-## 57. Key Lessons Learned
-
-This implementation demonstrated several defensive-security and administration principles.
-
-### Telemetry Sources Serve Different Purposes
-
-PowerShell Module Logging, Script Block Logging, Transcription, Sysmon, and File Integrity Monitoring are complementary rather than interchangeable.
-
-### Alerts Are Not the Same as Raw Telemetry
-
-Previous PowerShell testing demonstrated that an event can reach Wazuh without necessarily producing a dedicated alert.
-
-This distinction remains important when investigating endpoint telemetry.
-
-### Real-Time Monitoring Differs from Scheduled Scanning
-
-The normal Syscheck frequency is 12 hours.
-
-Configuring the transcript directory with:
-
-`realtime="yes"`
-
-allowed filesystem changes to be detected immediately rather than waiting for the scheduled scan.
-
-### Structured Data Should Be Queried Structurally
-
-Text searches using `grep` are useful for quick investigation, but can produce misleading matches.
-
-Using `jq` to filter Wazuh JSON by fields such as:
-
-- `.agent.name`
-- `.syscheck.path`
-- `.syscheck.mode`
-- `.syscheck.event`
-- `.rule.id`
-- `.rule.description`
-
-provides more reliable investigation results.
-
-### Analyst Activity Can Generate Security Telemetry
-
-The investigation itself generated Wazuh events when privileged `sudo` commands were executed on the SIEM server.
-
-This is an important SOC lesson: analyst and administrator activity may appear in the same telemetry being investigated.
-
-### Transcript Data Requires Security Consideration
-
-PowerShell transcripts can contain sensitive command and output data.
-
-For this phase, the transcript repository was monitored using FIM rather than automatically forwarding all transcript content into Wazuh.
-
----
-
-## 58. Recovery and Rollback
-
-Before modifying the Wazuh configuration, the existing configuration was backed up as:
-
-`C:\Program Files (x86)\ossec-agent\ossec.conf.pre-transcription.bak`
-
-After successful implementation and verification, `LAB-WIN-01` was cleanly powered off.
-
-A VirtualBox snapshot was created:
-
-`Windows - PowerShell Transcription + Wazuh FIM Verified`
-
-The snapshot represents the verified state containing:
-
-- Sysmon integration
-- PowerShell Script Block Logging
-- PowerShell Module Logging
-- PowerShell Transcription
-- Wazuh PowerShell Operational event collection
-- Wazuh real-time FIM for the PowerShell transcript repository
-
----
-
-## 59. Milestone Status
-
-PowerShell Transcription and Wazuh transcript File Integrity Monitoring are:
-
-**IMPLEMENTED AND VERIFIED**
-
-Verified capabilities now include:
-
-- PowerShell Event ID 4103 generation
-- PowerShell Event ID 4103 delivery to Wazuh
-- PowerShell Event ID 4104 generation
-- PowerShell Event ID 4104 delivery to Wazuh
-- System-wide PowerShell Transcription
-- Automatic transcript generation
-- Transcript command and output capture
-- Real-time Wazuh FIM monitoring of the transcript repository
-- File creation detection
-- File deletion detection
-- Genuine transcript modification detection
-- Structured Wazuh alert analysis using `jq`
-- End-to-end telemetry across CORPNET, OPNsense, SOCNET, and the Wazuh manager
-
-The next phase will introduce Wazuh Dashboard-based SOC investigation so that the same telemetry can be analyzed using both command-line and graphical SIEM workflows.
-
----
-
-## PowerShell Transcription and Wazuh File Integrity Monitoring
-
-### Objective
-
-PowerShell Transcription was enabled on `LAB-WIN-01` to provide an additional auditing layer for PowerShell activity.
-
-Because PowerShell transcript files may contain sensitive command output, transcript contents are not forwarded directly into the SIEM. Instead, Wazuh File Integrity Monitoring (FIM) monitors the transcript directory for file creation, modification, and deletion.
-
-This provides integrity visibility while reducing unnecessary exposure of transcript contents.
-
----
-
-### PowerShell Transcription Configuration
-
-PowerShell Transcription was enabled system-wide through:
-
-`HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription`
-
-Configured values:
-
-- `EnableTranscripting = 1`
-- `EnableInvocationHeader = 1`
-- `OutputDirectory = C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-Transcript directory:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts`
-
-A controlled PowerShell session using the marker:
-
-`CYBERLAB_TRANSCRIPTION_TEST_20260917`
-
-successfully generated a transcript.
-
-The transcript contained information including:
-
-- Username
-- Run-as identity
-- PowerShell host information
-- Process ID
-- PowerShell version
-- Commands executed
-- Command output
-
-SYSTEM-owned background transcripts were also observed.
-
----
-
-### Transcript Directory Permissions
-
-The transcript directory ACL was inspected.
-
-Observed principals included:
-
-- `SYSTEM` — Full Control
-- `Administrators` — Full Control
-- `CREATOR OWNER` — special inherited permissions
-- `Users` — Read/Execute and required file creation permissions
-
-The ACL was intentionally left unchanged because PowerShell sessions require the ability to create transcript files.
-
----
-
-### Wazuh FIM Configuration
-
-Before modifying the Wazuh agent configuration, a backup was created:
-
-`C:\Program Files (x86)\ossec-agent\ossec.conf.pre-transcription.bak`
-
-The PowerShell transcript directory was added to Wazuh Syscheck for real-time File Integrity Monitoring:
-
-`<directories realtime="yes">C:\ProgramData\CyberLab\PowerShellTranscripts</directories>`
-
-The Wazuh configuration was validated successfully and the Wazuh agent service was restarted.
-
-The agent returned to a running state.
-
----
-
-### Initial FIM Verification
-
-A controlled test file:
-
-`WAZUH_FIM_TEST_20260917.txt`
-
-was created and deleted inside the monitored directory.
-
-Wazuh successfully generated:
-
-- Rule `554` — File added to the system
-- Rule `553` — File deleted
-
-Both events were detected using real-time monitoring.
-
-A genuine PowerShell transcript containing:
-
-`CYBERLAB_REAL_TRANSCRIPT_FIM_TEST_20260917`
-
-also generated a FIM modification event:
-
-- Rule `550`
-- `Integrity checksum changed.`
-- `syscheck.mode = realtime`
-
-This verified that Wazuh was monitoring genuine PowerShell transcript activity rather than only manually created test files.
-
----
-
-### CLI Investigation
-
-Structured JSON filtering with `jq` was used on the Wazuh manager to investigate FIM events.
-
-Example:
-
-`sudo jq -c 'select(.agent.name=="LAB-WIN-01" and .syscheck.path != null)' /var/ossec/logs/alerts/alerts.json | tail -1`
-
-This provided structured fields including:
-
-- Timestamp
-- Rule ID
-- Rule description
-- Agent
-- File path
-- FIM mode
-- FIM event type
-
-An important investigation lesson was also observed: searching `alerts.json` using simple text matching can match an analyst's own commands because administrative activity is itself recorded by the SIEM.
-
-Structured JSON filtering is therefore preferable when precise event selection is required.
-
----
-
-## Wazuh Indexing and Dashboard Verification
-
-A controlled test was performed on September 22, 2026 to verify the complete path from Windows FIM detection to searchable Wazuh Dashboard data.
-
-Test file:
-
-`C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt`
-
-The file was created on `LAB-WIN-01`.
-
-The event was verified in:
-
-`/var/ossec/logs/alerts/alerts.json`
-
-and subsequently located in the Wazuh File Integrity Monitoring Dashboard.
-
-The indexed document was stored in:
-
-`wazuh-alerts-4.x-2026.09.22`
-
-Observed fields included:
-
-- `agent.name = LAB-WIN-01`
-- `agent.ip = 10.10.20.20`
-- `agent.id = 001`
-- `manager.name = lab-siem-01`
-- `decoder.name = syscheck_new_entry`
-- `location = syscheck`
-- `syscheck.mode = realtime`
-- `syscheck.event = added`
-- `rule.id = 554`
-- `rule.level = 5`
-- `rule.description = File added to the system.`
-
-Wazuh also recorded forensic metadata including:
-
-- MD5
-- SHA-1
-- SHA-256
-- File size
-- Modification time
-- Owner
-- Windows SID
-- File attributes
-- Windows permissions
-
-This confirmed that the event was not only generated by the Wazuh manager but successfully shipped, indexed, and made searchable through the Wazuh Dashboard.
-
----
-
-## Full FIM Lifecycle Test
-
-The same test file was then used to verify the complete File Integrity Monitoring lifecycle.
-
-### ADD
-
-Creation of:
-
-`FIM_INDEX_TEST_20260922.txt`
-
-generated:
-
-- `syscheck.event = added`
-- Rule `554`
-- `File added to the system.`
-
-### MODIFY
-
-PowerShell was used to append additional content to the file.
-
-Command:
-
-`Add-Content -Path "C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt" -Value "FIM modification test - 20260922"`
-
-Wazuh detected the change and generated:
-
-- `syscheck.event = modified`
-- Rule `550`
-- `Integrity checksum changed.`
-
-### DELETE
-
-The test file was removed with:
-
-`Remove-Item -Path "C:\ProgramData\CyberLab\PowerShellTranscripts\FIM_INDEX_TEST_20260922.txt"`
-
-Wazuh detected the deletion and generated:
-
-- `syscheck.event = deleted`
-- Rule `553`
-- `File deleted.`
-
-The ADD, MODIFY, and DELETE events were all confirmed through the Wazuh Dashboard.
-
----
-
-## Verified Monitoring Pipeline
-
-The completed tests verify the following telemetry path:
-
-`PowerShell / Windows filesystem`
-
-→ `Wazuh Agent`
-
-→ `CORPNET`
-
-→ `OPNsense`
-
-→ `SOCNET`
-
-→ `Wazuh Manager`
-
-→ `Filebeat`
-
-→ `Wazuh Indexer`
-
-→ `Wazuh Dashboard`
-
-The successful Dashboard search confirmed that the complete SIEM indexing pipeline was operational.
-
----
-
-## Security Design
-
-PowerShell monitoring in the lab now uses several complementary telemetry layers:
-
-- PowerShell Event ID `4103` — module/cmdlet activity
-- PowerShell Event ID `4104` — script block logging
-- PowerShell Transcription — command and output session records
-- Wazuh FIM — integrity monitoring of transcript files
-
-Transcript contents are retained locally rather than blindly ingested into the SIEM because transcripts can contain sensitive command output.
-
-Wazuh FIM provides centralized visibility into creation, modification, and deletion of those transcript files while minimizing unnecessary exposure of their contents.
-
----
-
-## Result
-
-PowerShell Transcription and Wazuh real-time File Integrity Monitoring are operational on `LAB-WIN-01`.
-
-The following capabilities have been verified:
-
-- PowerShell transcript generation
-- Controlled transcript storage
-- Transcript directory permission inspection
-- Wazuh real-time directory monitoring
-- Genuine transcript modification detection
-- File creation detection
-- File modification detection
-- File deletion detection
-- CLI investigation using structured JSON
-- Manager-side alert generation
-- Filebeat-to-indexer connectivity
-- Wazuh Indexer storage
-- Dashboard search and investigation
-- Complete ADD → MODIFY → DELETE lifecycle visibility
-
-### Snapshot
-
-Verified Windows milestone snapshot:
-
-`Windows - PowerShell Transcription + Wazuh FIM Verified`
+Future work should focus on generating controlled PowerShell attack behaviours and measuring whether the existing telemetry produces useful detections rather than expanding the baseline without a specific detection requirement.
