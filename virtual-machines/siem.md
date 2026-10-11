@@ -1,630 +1,174 @@
-# LAB-SIEM-01 — Wazuh SIEM / Security Operations Server
+# LAB-SIEM-01 — Wazuh Security Information and Event Management Server
 
-## Purple Team Cybersecurity Homelab
+## Overview
 
-**Hostname:** `LAB-SIEM-01`  
-**Role:** Security Information and Event Management / XDR / Central Security Monitoring  
-**Operating System:** Ubuntu Server  
-**Network Zone:** SOCNET  
-**IPv4 Address:** `10.10.40.10/24`  
-**Default Gateway:** `10.10.40.1`  
-**Primary Platform:** Wazuh  
-**Status:** Operational, monitored, integrated, and verified
+This document records the complete lifecycle of the SIEM platform used throughout the Cybersecurity Home Lab, from its initial deployment through its final role as `LAB-SIEM-01` in the validated six-zone architecture.
 
----
+The SIEM did not exist in the earliest flat-network version of the lab.
 
-# 1. Purpose
+It was introduced later when the project began moving beyond isolated endpoint testing toward centralized monitoring, detection engineering, network telemetry, and realistic SOC workflows.
 
-`LAB-SIEM-01` is the central monitoring and detection platform for the Purple Team CyberLab.
-
-It provides:
-
-- Centralized endpoint telemetry
-- Windows Security event monitoring
-- Linux security monitoring
-- Sysmon collection
-- PowerShell telemetry
-- Active Directory security monitoring
-- OPNsense firewall log ingestion
-- Suricata IDS alert ingestion
-- File Integrity Monitoring
-- Auditd monitoring
-- Detection engineering
-- Threat hunting
-- Alert correlation
-- Security dashboarding
-
-The SIEM resides in the dedicated `SOCNET` security zone to separate security infrastructure from normal endpoints, servers, Active Directory systems, and attacker networks.
-
----
-
-# 2. Network Configuration
-
-Network:
-
-`SOCNET`
-
-Subnet:
-
-`10.10.40.0/24`
-
-SIEM Server:
-
-`10.10.40.10`
-
-Default Gateway:
-
-`10.10.40.1`
-
-The gateway is provided by:
-
-`LAB-FW-01`
-
-OPNsense controls traffic entering and leaving SOCNET.
-
----
-
-# 3. CyberLab Network Context
-
-Current network architecture:
-
-| Zone | Network | Purpose |
-|---|---|---|
-| REDNET | `10.10.10.0/24` | Offensive / attacker systems |
-| CORPNET | `10.10.20.0/24` | Corporate Windows endpoints |
-| SERVERNET | `10.10.30.0/24` | Internal Linux/server systems |
-| SOCNET | `10.10.40.0/24` | Security monitoring infrastructure |
-| ADNET | `10.10.50.0/24` | Active Directory infrastructure |
-| DMZ | `10.10.60.0/24` | Planned perimeter services |
-
-Important monitored systems:
-
-| Host | IP | Role |
-|---|---|---|
-| LAB-WIN-01 | `10.10.20.20` | Windows domain workstation |
-| LAB-UBUNTU-01 | `10.10.30.30` | Linux endpoint/server |
-| LAB-SIEM-01 | `10.10.40.10` | Wazuh SIEM |
-| LAB-DC-01 | `10.10.50.10` | Domain Controller / DNS |
-| LAB-FW-01 | Multiple interfaces | OPNsense firewall |
-
----
-
-# 4. Wazuh Architecture
-
-The Wazuh stack installed on `LAB-SIEM-01` includes:
-
-- Wazuh Manager
-- Wazuh Indexer
-- Wazuh Dashboard
-- Filebeat
-
-These services provide the core SIEM pipeline:
-
-    Endpoint / Firewall / IDS
-            ↓
-        Wazuh Manager
-            ↓
-          Filebeat
-            ↓
-        Wazuh Indexer
-            ↓
-       Wazuh Dashboard
-
-The Wazuh Dashboard is accessed from the management workstation rather than directly from the SIEM console.
-
----
-
-# 5. Wazuh Service Verification
-
-The following Wazuh components were verified as active:
-
-- Wazuh Manager
-- Wazuh Indexer
-- Wazuh Dashboard
-- Filebeat
-
-The Wazuh environment is currently receiving telemetry from multiple security zones.
-
----
-
-# 6. Current Wazuh Agents
-
-The following monitored agents are currently active:
-
-| Agent | IP | Platform | Status |
-|---|---|---|---|
-| LAB-WIN-01 | `10.10.20.20` | Windows 11 | Active |
-| LAB-UBUNTU-01 | `10.10.30.30` | Ubuntu Linux | Active |
-| LAB-DC-01 | `10.10.50.10` | Windows Server / Domain Controller | Active |
-
-This provides centralized visibility across:
-
-- Workstation telemetry
-- Linux server telemetry
-- Active Directory telemetry
-
----
-
-# 7. Windows Endpoint Monitoring
-
-`LAB-WIN-01` forwards Windows security telemetry to Wazuh.
-
-Monitoring includes:
-
-- Windows Security events
-- Sysmon
-- PowerShell logging
-- Microsoft Defender
-- Windows Firewall
-- File Integrity Monitoring
-- Advanced Windows auditing
-
-Examples of monitored Windows activity include:
-
-- Process creation
-- PowerShell execution
-- Firewall blocks
-- Authentication activity
-- Suspicious command execution
-- Endpoint security changes
-
----
-
-# 8. Linux Endpoint Monitoring
-
-`LAB-UBUNTU-01` forwards Linux telemetry to Wazuh.
-
-Linux monitoring includes:
-
-- Auditd
-- SSH security activity
-- User account changes
-- File Integrity Monitoring
-- Authentication activity
-- System security events
-
-Custom Wazuh rules were also created for native Linux account-management events.
-
-Examples include:
-
-`100200`
-
-Purpose:
-
-Native Linux user creation detection.
-
-`100201`
-
-Purpose:
-
-Native Linux user deletion detection.
-
-These detections were tested using controlled account lifecycle activity.
-
----
-
-# 9. Active Directory Monitoring
-
-`LAB-DC-01` is monitored by Wazuh through the dedicated ADNET-to-SOCNET firewall path.
-
-The Domain Controller forwards:
-
-- Windows Security events
-- PowerShell Operational events
-- Sysmon Operational events
-- Active Directory authentication telemetry
-- Account-management events
-- Security-group changes
-- Privileged logons
-- Audit-policy changes
-
-Important verified events include:
-
-| Event ID | Description |
-|---|---|
-| 4103 | PowerShell Module Logging |
-| 4104 | PowerShell Script Block Logging |
-| 4672 | Special privileges assigned to new logon |
-| 4688 | Process creation |
-| 4719 | System audit policy changed |
-| 4720 | User account created |
-| 4726 | User account deleted |
-| 4728 | Member added to global security group |
-| 4729 | Member removed from global security group |
-| 4768 | Kerberos TGT requested |
-| 4769 | Kerberos service ticket requested |
-| 4771 | Kerberos pre-authentication failed |
-| 5136 | Directory service object modified |
-
----
-
-# 10. Active Directory Authentication Detection
-
-A controlled incorrect password attempt was performed using:
-
-`CYBERLAB\emmanuel.patrick`
-
-The Domain Controller generated:
-
-`Event ID 4771`
-
-Description:
-
-`Kerberos pre-authentication failed`
-
-Wazuh successfully detected the event.
-
-Observed source:
-
-`10.10.20.20`
-
-Observed target:
-
-`emmanuel.patrick`
-
-Kerberos status:
-
-`0x18`
-
-This demonstrated the ability to detect failed Kerberos authentication activity.
-
----
-
-# 11. Active Directory Account Lifecycle Detection
-
-A temporary account was created:
-
-`telemetry.test`
-
-The Domain Controller generated:
-
-`4720`
-
-Wazuh identified the account creation.
-
-The account was then deleted.
-
-The Domain Controller generated:
-
-`4726`
-
-Wazuh identified the deletion.
-
-The temporary account was removed after testing.
-
----
-
-# 12. Active Directory Group Monitoring
-
-A temporary Global Security Group was created:
-
-`GG_Telemetry_Test`
-
-The account:
-
-`emmanuel.patrick`
-
-was temporarily added.
-
-This generated:
-
-`4728`
-
-The user was then removed.
-
-This generated:
-
-`4729`
-
-Both events were detected in Wazuh.
-
-The temporary security group was deleted after testing.
-
----
-
-# 13. Privileged Logon Monitoring
-
-Wazuh successfully detected:
-
-`4672`
-
-Description:
-
-`Special privileges assigned to new logon`
-
-The verified event involved:
-
-    Domain: CYBERLAB
-    Account: Administrator
-    Computer: LAB-DC-01.cyberlab.internal
-
-This provides visibility into privileged sessions occurring on the Domain Controller.
-
----
-
-# 14. PowerShell Monitoring
-
-PowerShell telemetry is collected from Windows systems.
-
-On `LAB-DC-01`, the following channel was explicitly added to Wazuh:
-
-    Microsoft-Windows-PowerShell/Operational
-
-Wazuh configuration:
-
-    <localfile>
-      <location>Microsoft-Windows-PowerShell/Operational</location>
-      <log_format>eventchannel</log_format>
-    </localfile>
-
-PowerShell Script Block Logging:
-
-`4104`
-
-Verified in Wazuh.
-
-PowerShell Module Logging:
-
-`4103`
-
-Verified locally.
-
----
-
-# 15. Sysmon Monitoring
-
-Sysmon telemetry is collected from Windows systems.
-
-On `LAB-DC-01`, the following event channel is collected:
-
-    Microsoft-Windows-Sysmon/Operational
-
-Wazuh configuration:
-
-    <localfile>
-      <location>Microsoft-Windows-Sysmon/Operational</location>
-      <log_format>eventchannel</log_format>
-    </localfile>
-
-Sysmon Event ID `1` process creation events were successfully observed in Wazuh.
-
-The Domain Controller Sysmon configuration was tuned to reduce unnecessary process noise while preserving higher-value activity.
-
----
-
-# 16. OPNsense Firewall Log Integration
-
-OPNsense firewall logs are forwarded to Wazuh.
-
-The firewall telemetry allows Wazuh to monitor:
-
-- Permitted traffic
-- Blocked traffic
-- Network segmentation violations
-- Security-zone interaction
-- Firewall policy enforcement
-
-A custom firewall correlation rule was created and verified:
-
-`87702`
-
-This confirmed that OPNsense firewall events could be processed and correlated inside Wazuh.
-
----
-
-# 17. Suricata IDS Integration
-
-Suricata IDS runs on OPNsense.
-
-Suricata monitors network traffic and produces EVE JSON telemetry.
-
-The final architecture is:
-
-    Network Traffic
-        ↓
-    OPNsense Suricata
-        ↓
-    EVE JSON
-        ↓
-    Remote Syslog UDP/5514
-        ↓
-    LAB-SIEM-01 rsyslog
-        ↓
-    /var/log/suricata/eve.json
-        ↓
-    Wazuh Logcollector
-        ↓
-    Wazuh Rules
-        ↓
-    Wazuh Dashboard
-
----
-
-# 18. Suricata Syslog Receiver
-
-A dedicated rsyslog listener was configured on:
-
-`UDP/5514`
-
-Configuration file:
-
-`/etc/rsyslog.d/30-suricata-remote.conf`
-
-Suricata logs are written to:
-
-`/var/log/suricata/eve.json`
-
-Directory ownership:
-
-    syslog:wazuh
-
-Directory permissions:
-
-    750
-
-Log file permissions:
-
-    0640
-
-The dedicated port avoids conflicts with other syslog traffic.
-
----
-
-# 19. Suricata Detection Verification
-
-A Suricata alert was successfully observed for:
-
-Signature ID:
-
-`2100498`
-
-Description:
-
-`GPL ATTACK_RESPONSE id check returned root`
-
-Category:
-
-`Potentially Bad Traffic`
-
-Severity:
-
-`2`
-
-Example source:
-
-`217.160.0.187:80`
-
-Destination:
-
-`10.10.10.10`
-
-The alert was successfully decoded and processed by Wazuh.
-
-Wazuh rule:
-
-`86601`
-
-Description:
-
-Suricata alert.
-
-This verified the IDS-to-SIEM monitoring pipeline.
-
----
-
-# 20. Suricata Decoder Development
-
-During development, Suricata events initially failed to decode correctly and fell back to:
-
-Wazuh rule:
-
-`1002`
-
-Custom decoder work was performed while troubleshooting.
-
-The environment was eventually simplified to use pure EVE JSON and Wazuh's built-in JSON / Suricata processing.
-
-The temporary custom wrapper decoder was retired after the cleaner integration was confirmed.
-
-This reduced unnecessary custom parsing and improved maintainability.
-
----
-
-# 21. rsyslog Verification
-
-rsyslog was verified as active.
-
-Observed version:
-
-`8.2512.0`
-
-The service listens on:
-
-`UDP/5514`
-
-IPv4:
-
-`0.0.0.0:5514`
-
-IPv6:
-
-`[::]:5514`
-
-This listener is dedicated to Suricata telemetry.
-
----
-
-# 22. Wazuh Agent Communication Ports
-
-The lab uses:
-
-`1514/TCP`
-
-for Wazuh agent communication.
-
-`1515/TCP`
-
-for enrollment / registration.
-
-OPNsense alias:
-
-`WAZUH_AGENT_PORTS`
-
-contains:
-
-    1514
-    1515
-
-Security zones are granted access to these ports only where endpoint monitoring is required.
-
----
-
-# 23. Wazuh Dashboard Access
-
-Wazuh Dashboard is accessed from:
-
-`LAB-WIN-01`
-
-rather than using the SIEM server itself as a browsing workstation.
-
-Dashboard address:
-
-`https://10.10.40.10`
-
-This maintains separation between:
-
-- SIEM infrastructure
-- Administrative workstation activity
-
----
-
-# 24. SOCNET Security Design
-
-SOCNET is:
-
-`10.10.40.0/24`
-
-The network contains security infrastructure such as:
+Final host:
 
 `LAB-SIEM-01`
 
-SOCNET is treated as a protected security zone.
+Final address:
 
-Other networks do not receive unrestricted access to SOCNET.
+`10.10.40.10`
 
-Required communication is provided using explicit OPNsense rules.
+Final zone:
 
-Examples include:
+`SOCNET`
 
-- Wazuh agent communication
-- Administrative dashboard access
-- Security telemetry forwarding
+Primary platform:
+
+`Wazuh`
+
+Final Wazuh version:
+
+`4.14.7`
+
+Primary role:
+
+Centralized security monitoring, event collection, detection, correlation, and SOC analysis
 
 ---
 
-# 25. Wazuh Agent Aliases
+# Phase 1 — Before the SIEM
 
-Relevant OPNsense aliases include:
+The earliest version of the lab used a simple network based around:
+
+`192.168.56.0/24`
+
+Primary systems included:
+
+- Kali Linux — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu Server — `192.168.56.30`
+
+Security testing at this stage focused mainly on:
+
+- Nmap
+- SSH
+- Hydra
+- fail2ban
+- connectivity
+- local host logs
+- basic attacker/defender interaction
+
+There was no centralized SIEM.
+
+Evidence had to be examined directly on each system.
+
+This became increasingly limiting as the lab matured.
+
+---
+
+# Why a SIEM Was Added
+
+As the project expanded, there was a need to centralize security telemetry from multiple sources.
+
+The lab needed a platform capable of collecting and analyzing:
+
+- Windows security events
+- Sysmon
+- PowerShell activity
+- Linux logs
+- auditd
+- Microsoft Defender events
+- Windows Firewall events
+- OPNsense firewall logs
+- Suricata IDS alerts
+- Nginx access and error logs
+- Active Directory events
+
+Wazuh was introduced to provide this capability.
+
+This marked the transition from individual host security testing into a true SOC-oriented lab.
+
+---
+
+# SOCNET Introduction
+
+The SIEM was placed in its own dedicated security zone:
+
+`SOCNET`
+
+Network:
+
+`10.10.40.0/24`
+
+Gateway:
+
+`10.10.40.1`
+
+SIEM address:
+
+`10.10.40.10`
+
+This design separated monitoring infrastructure from:
+
+- attacker systems
+- corporate endpoints
+- internal servers
+- identity infrastructure
+- public-facing systems
+
+---
+
+# LAB-SIEM-01 Role
+
+The SIEM performs several core functions:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+- endpoint agent management
+- security event ingestion
+- detection rules
+- log correlation
+- firewall telemetry ingestion
+- Suricata ingestion
+- centralized investigation
+
+---
+
+# Initial Wazuh Deployment
+
+The Wazuh stack was deployed on Ubuntu Server.
+
+The core components included:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+
+The system was configured as the central monitoring destination for the rest of the lab.
+
+---
+
+# Initial Network Position
+
+Once SOCNET was created, the SIEM used:
+
+`10.10.40.10`
+
+This became the fixed destination used throughout the lab for security telemetry.
+
+Important Wazuh communication ports included:
+
+- TCP `1514`
+- TCP `1515`
+
+These were later incorporated into OPNsense firewall aliases.
+
+---
+
+# WAZUH_SERVER Alias
+
+OPNsense uses the alias:
 
 `WAZUH_SERVER`
 
@@ -632,257 +176,1036 @@ Address:
 
 `10.10.40.10`
 
+This allows firewall rules to reference the SIEM by function rather than by raw IP address.
+
+---
+
+# WAZUH_AGENT_PORTS Alias
+
+The firewall also uses:
+
 `WAZUH_AGENT_PORTS`
 
 Ports:
 
-    1514
-    1515
+- `1514`
+- `1515`
 
-`WAZUH_DASHBOARD_PORT`
-
-Port:
-
-`443`
-
-`WAZUH_API_PORT`
-
-Port:
-
-`55000`
-
-These aliases make firewall policy easier to read and maintain.
+This provides a readable and reusable representation of the required Wazuh communication services.
 
 ---
 
-# 26. SIEM Storage Recovery
+# Windows Agent Onboarding
 
-`LAB-SIEM-01` previously experienced a storage-related boot issue.
+`LAB-WIN-01` became the first major endpoint integrated with the SIEM.
 
-The VM was recovered successfully.
+Final Windows agent:
 
-Logical volume:
+    ID: 001
+    Name: LAB-WIN-01
+    Status: Active
 
-`/dev/mapper/ubuntu--vg-ubuntu--lv`
+The Windows endpoint later supplied telemetry including:
 
-Observed filesystem state after recovery:
-
-    Total: approximately 53 GB
-    Used: approximately 21 GB
-    Free: approximately 30 GB
-
-The logical volume was confirmed active.
-
-No failed systemd services were present after recovery.
-
-The Wazuh stack returned to normal operation.
-
----
-
-# 27. Snapshot Recovery Policy
-
-An older SIEM snapshot should not be restored during normal operations because the current SIEM state is healthy and contains newer configuration and monitoring data.
-
-Rollback should only occur if a genuine infrastructure failure requires it.
-
-The preferred workflow remains:
-
-    Snapshot
-    → Change
-    → Verify
-    → Document
-    → Continue
-
----
-
-# 28. Detection Engineering
-
-The SIEM is used not only to collect telemetry but also to build and validate custom detections.
-
-Examples completed include:
-
-- Windows endpoint detections
-- Windows Firewall detections
-- Linux account lifecycle detections
-- OPNsense firewall correlation
-- Suricata IDS processing
-- Active Directory account changes
-- Active Directory security-group changes
-- Kerberos authentication failures
-- Privileged logons
-- PowerShell telemetry
-- Sysmon telemetry
-
-The lab therefore supports both:
-
-- Defensive monitoring
-- Detection engineering
-
----
-
-# 29. Current Monitoring Coverage
-
-Current visibility includes:
-
-## Windows Workstation
-
-- Security logs
-- Process creation
-- PowerShell
+- Security event logs
 - Sysmon
+- PowerShell
 - Defender
 - Windows Firewall
 - File Integrity Monitoring
-- Advanced auditing
+- advanced auditing
 
-## Linux Server
+This made Windows the first major endpoint source for detection engineering.
 
-- Auditd
-- SSH activity
-- Account management
-- File Integrity Monitoring
-- Authentication
-- System security events
+---
 
-## Domain Controller
+# Linux Agent Onboarding
 
-- Kerberos
-- Account creation/deletion
-- Group membership
-- Privileged logons
-- Process creation
+`LAB-UBUNTU-01` was also integrated into Wazuh.
+
+Final Linux agent:
+
+    ID: 002
+    Name: LAB-UBUNTU-01
+    Status: Active
+
+Linux monitoring eventually included:
+
+- system logs
+- authentication logs
+- auditd
+- user-management events
+- custom detection rules
+
+---
+
+# Linux Detection Engineering
+
+The SIEM was used to detect native Linux administrative events.
+
+Custom detections included:
+
+`Rule 100200`
+
+for native user creation.
+
+And:
+
+`Rule 100201`
+
+for native user deletion.
+
+These detections proved that the SIEM could support custom Linux detection engineering rather than relying only on built-in rules.
+
+---
+
+# Windows Detection Engineering
+
+The Windows endpoint was also used to develop and validate security monitoring.
+
+Important monitored categories included:
+
+- process creation
 - PowerShell
+- privilege use
+- Defender events
+- Windows Filtering Platform events
+- file integrity changes
+
+This helped transform the SIEM from a simple log collector into an active detection platform.
+
+---
+
+# Windows Firewall Event Monitoring
+
+Windows Firewall telemetry included:
+
+`Event ID 5157`
+
+This event represents a connection blocked by the Windows Filtering Platform.
+
+Monitoring it helped distinguish:
+
+- endpoint firewall blocks
+- OPNsense firewall blocks
+
+This improved investigation quality.
+
+---
+
+# Sysmon Integration
+
+Sysmon telemetry from Windows was collected through the Wazuh agent.
+
+The data helped provide:
+
+- process lineage
+- command execution
+- suspicious binary execution
+- richer host activity context
+
+Sysmon later became important both on the workstation and the Domain Controller.
+
+---
+
+# PowerShell Logging Integration
+
+The SIEM collected enhanced PowerShell telemetry including:
+
+- Script Block Logging
+- Module Logging
+- transcription-related evidence
+
+This provided visibility into administrative and potentially malicious PowerShell execution.
+
+---
+
+# OPNsense Firewall Log Integration
+
+After endpoint monitoring was established, the firewall itself became a security data source.
+
+OPNsense logs were forwarded into the SIEM.
+
+This provided centralized visibility into:
+
+- blocked traffic
+- segmentation violations
+- unauthorized inter-zone attempts
+- firewall rule behaviour
+
+---
+
+# Firewall Correlation Rule
+
+A Wazuh firewall correlation rule was successfully validated:
+
+`Rule 87702`
+
+This proved that the SIEM could process firewall telemetry and generate meaningful detections from network enforcement events.
+
+---
+
+# Suricata Introduction
+
+Suricata IDS was introduced later on OPNsense.
+
+This added network-layer detection to the lab.
+
+The primary monitored interface was:
+
+`em2`
+
+which corresponds to REDNET.
+
+Suricata generated EVE JSON events.
+
+The next challenge was to transport those events reliably into Wazuh.
+
+---
+
+# Initial Suricata Decoder Troubleshooting
+
+At first, Suricata events did not decode correctly in Wazuh.
+
+The events initially fell through to:
+
+`Rule 1002`
+
+because no suitable decoder matched the event format.
+
+A custom Suricata decoder was then introduced.
+
+During testing, decoder names observed included:
+
+`suricata-eve-syslog`
+
+and later:
+
+`json`
+
+This phase involved multiple iterations to determine the cleanest ingestion architecture.
+
+---
+
+# Built-In Suricata Rule
+
+Once Wazuh correctly parsed the event, it generated:
+
+`Rule 86601`
+
+This came from:
+
+`0475-suricata_rules.xml`
+
+The alert corresponded to:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+This demonstrated that built-in Wazuh Suricata detection logic could be used without maintaining unnecessary custom wrappers.
+
+---
+
+# Retirement of the Custom Wrapper Decoder
+
+Once JSON parsing worked properly, the custom Suricata wrapper approach was no longer required.
+
+The architecture was simplified so that Suricata events could be ingested directly as JSON.
+
+This reduced complexity and made the solution easier to maintain.
+
+---
+
+# Dedicated Suricata Syslog Port
+
+A dedicated UDP port was created for Suricata telemetry:
+
+`UDP/5514`
+
+This kept Suricata traffic separate from other syslog sources.
+
+The SIEM was configured to listen using rsyslog.
+
+---
+
+# rsyslog Configuration
+
+A dedicated rsyslog configuration was created:
+
+`/etc/rsyslog.d/30-suricata-remote.conf`
+
+The configuration used:
+
+`imudp`
+
+on:
+
+`5514`
+
+Events matching the Suricata program name were written to:
+
+`/var/log/suricata/eve.json`
+
+---
+
+# Suricata Log Directory
+
+The directory:
+
+`/var/log/suricata`
+
+was created.
+
+Ownership:
+
+`syslog:wazuh`
+
+Permissions:
+
+`750`
+
+The EVE file used permissions appropriate for rsyslog writing and Wazuh reading.
+
+---
+
+# rsyslog Listener Validation
+
+The SIEM was confirmed listening on:
+
+`0.0.0.0:5514`
+
+and:
+
+`[::]:5514`
+
+This proved the receiver was ready before final OPNsense forwarding validation.
+
+---
+
+# Final Suricata Telemetry Path
+
+The final architecture became:
+
+    LAB-FW-01
+       |
+       v
+    Suricata
+       |
+       v
+    OPNsense Remote Logging
+       |
+       | UDP/5514
+       v
+    LAB-SIEM-01
+       |
+       v
+    rsyslog
+       |
+       v
+    /var/log/suricata/eve.json
+       |
+       v
+    Wazuh Logcollector
+       |
+       v
+    JSON Decoder
+       |
+       v
+    Wazuh Detection
+
+This is the authoritative Suricata ingestion architecture.
+
+---
+
+# Wazuh Localfile Configuration
+
+Wazuh was configured to monitor:
+
+`/var/log/suricata/eve.json`
+
+using:
+
+`json`
+
+log format.
+
+This allowed the event fields to be parsed directly.
+
+---
+
+# Suricata Detection Validation
+
+A controlled test generated:
+
+`Signature ID 2100498`
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Wazuh generated:
+
+`Rule 86601`
+
+This confirmed the complete network detection pipeline.
+
+---
+
+# Important alerts.json Lesson
+
+During investigation, the Suricata alert in Wazuh showed:
+
+`full_log: null`
+
+This initially appeared unusual.
+
+However, the event still contained the structured JSON fields required for detection.
+
+The correct search method therefore became:
+
+- search by rule ID
+- search by location
+- search by structured event fields
+
+rather than assuming `full_log` must always contain the original message.
+
+---
+
+# Live JSON Parsing Lesson
+
+Direct `jq` testing against actively written log files occasionally produced parsing errors.
+
+This did not automatically indicate corruption.
+
+The likely explanation was reading the file while a line was still being written or encountering a malformed/partial live record.
+
+Because valid Wazuh alerts continued to be generated, the pipeline itself was not considered broken.
+
+This reinforced an important troubleshooting principle:
+
+**Do not treat one parsing symptom as proof of an end-to-end ingestion failure when validated events are still reaching the SIEM.**
+
+---
+
+# Active Directory Integration
+
+After ADNET was created, the Domain Controller was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+    Status: Active
+
+The SIEM gained visibility into:
+
+- Windows Security events
+- privileged activity
+- Active Directory changes
+- Sysmon events
+- Group Policy-related activity
+- security auditing
+
+---
+
+# Domain Controller Event Monitoring
+
+Important events observed included:
+
+- Event ID `5136`
+- Event ID `4719`
+- Event ID `4672`
+
+These events contributed visibility into:
+
+- directory modifications
+- audit policy changes
+- privileged logon activity
+
+---
+
+# Domain Controller Sysmon
+
+Sysmon was later installed on:
+
+`LAB-DC-01`
+
+Version observed:
+
+`15.22`
+
+Binary:
+
+`C:\Tools\Sysmon\Sysmon64.exe`
+
+Configuration file:
+
+`sysmon-dc.xml`
+
+The SIEM successfully received Domain Controller Sysmon telemetry.
+
+---
+
+# Domain Controller Sysmon Tuning
+
+The Sysmon configuration was tuned to reduce noise and focus on security-relevant execution.
+
+Process-create monitoring focused on tools such as:
+
+- powershell
+- pwsh
+- cmd
+- rundll32
+- regsvr32
+- mshta
+- certutil
+- bitsadmin
+- wscript
+- cscript
+- schtasks
+- nltest
+- ntdsutil
+- whoami
+- net
+- net1
+
+DNS monitoring was similarly focused on relevant executables.
+
+This reduced unnecessary event volume while preserving useful detection value.
+
+---
+
+# DMZ Integration
+
+The final endpoint added to Wazuh was:
+
+`LAB-DMZ-01`
+
+Final agent:
+
+    ID: 004
+    Name: LAB-DMZ-01
+    Status: Active
+
+The DMZ agent provided visibility into:
+
+- Linux host events
+- Nginx access logs
+- Nginx error logs
+- web activity
+
+---
+
+# Pre-Installation Network Validation
+
+Before installing the Wazuh agent on the DMZ server, connectivity was tested to:
+
+`10.10.40.10`
+
+Ports:
+
+- `1514`
+- `1515`
+
+Both succeeded.
+
+This confirmed firewall policy before adding the agent.
+
+---
+
+# Nginx Log Integration
+
+The DMZ server forwarded Nginx logs through the Wazuh agent.
+
+Configured log files included:
+
+`/var/log/nginx/access.log`
+
+using:
+
+`apache`
+
+log format.
+
+And:
+
+`/var/log/nginx/error.log`
+
+using:
+
+`syslog`
+
+log format.
+
+---
+
+# Nginx Detection Validation
+
+A controlled request was generated:
+
+`GET /wazuh-nginx-verify-01 HTTP/1.1`
+
+Source:
+
+`10.10.10.10`
+
+The request returned:
+
+`404`
+
+Wazuh generated:
+
+`Rule 31101`
+
+Description:
+
+`Web server 400 error code.`
+
+Additional event details included:
+
+- Agent ID: `004`
+- Agent: `LAB-DMZ-01`
+- Source IP: `10.10.10.10`
+- Decoder: `web-accesslog`
+- Location: Nginx access log
+
+This proved the web monitoring pipeline.
+
+---
+
+# Final Agent Inventory
+
+The final SIEM agent state is:
+
+    ID 001 — LAB-WIN-01 — Active
+    ID 002 — LAB-UBUNTU-01 — Active
+    ID 003 — LAB-DC-01 — Active
+    ID 004 — LAB-DMZ-01 — Active
+
+This confirms monitoring coverage across:
+
+- corporate workstation
+- internal Linux server
+- Domain Controller
+- DMZ server
+
+---
+
+# SIEM Recovery Event
+
+At one stage, the SIEM experienced a storage-related problem and required recovery.
+
+The system was successfully restored to a healthy bootable state.
+
+The LVM layout included:
+
+`/dev/mapper/ubuntu--vg-ubuntu--lv`
+
+An observed healthy state showed:
+
+    Total: 53G
+    Used: approximately 21G
+    Free: approximately 30G
+
+Later final validation showed:
+
+    Total: 53G
+    Used: 25G
+    Available: 26G
+    Usage: 49%
+
+This confirmed adequate remaining capacity.
+
+---
+
+# Recovery Validation
+
+After recovery, the SIEM was checked for:
+
+- filesystem health
+- LVM state
+- failed services
+- Wazuh stack status
+
+The volume group and logical volume were active.
+
+No failed systemd services remained.
+
+The system booted normally.
+
+---
+
+# Snapshot Decision After Recovery
+
+An important decision was made:
+
+**Do not restore the older SIEM snapshot.**
+
+The recovered live system was healthier and more current than the old snapshot.
+
+Restoring an older snapshot would have risked:
+
+- losing later configuration
+- losing detection work
+- reintroducing outdated state
+
+The recovered system therefore became the continuing authoritative SIEM.
+
+---
+
+# Wazuh Stack Validation
+
+The final stack was checked and confirmed active.
+
+Services:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+
+Status:
+
+**ACTIVE**
+
+---
+
+# Wazuh Manager Version
+
+Final Wazuh Manager version:
+
+`v4.14.7`
+
+This became the reference version when installing the DMZ agent.
+
+Version compatibility was checked before deployment.
+
+---
+
+# SOCNET Firewall Role
+
+SOCNET is intentionally not used as a general-purpose internal network.
+
+Its purpose is security monitoring.
+
+Approved traffic primarily includes telemetry to:
+
+`LAB-SIEM-01`
+
+Examples:
+
+    CORPNET → SOCNET Wazuh
+    SERVERNET → SOCNET Wazuh
+    ADNET → SOCNET Wazuh
+    DMZ → SOCNET Wazuh
+    OPNsense → SOCNET firewall telemetry
+    OPNsense → SOCNET Suricata telemetry
+
+This helps keep monitoring infrastructure isolated.
+
+---
+
+# Service-Level Validation
+
+The project avoided relying only on ping.
+
+For example, Ubuntu at one stage could not ping the SIEM but could reach:
+
+`TCP/1514`
+
+The Wazuh path was therefore considered healthy.
+
+This reinforced:
+
+**Test the service you actually require.**
+
+---
+
+# Agent Status Troubleshooting
+
+At one stage, the Ubuntu agent appeared disconnected.
+
+Investigation compared:
+
+- current manager status
+- timestamps
+- recent agent logs
+- network connectivity
+
+Recent logs showed successful connection and the manager later reported the agent as Active.
+
+This demonstrated the danger of interpreting old log messages as current failures.
+
+---
+
+# Final Suricata Validation
+
+The final controlled REDNET-to-DMZ test generated the known response:
+
+`uid=0(root) gid=0(root) groups=0(root)`
+
+Suricata detected the response using:
+
+`SID 2100498`
+
+Wazuh subsequently generated:
+
+`Rule 86601`
+
+This proved the complete IDS-to-SIEM chain.
+
+---
+
+# Final Firewall Monitoring Validation
+
+OPNsense firewall telemetry had previously been validated through:
+
+`Wazuh Rule 87702`
+
+This ensured that the SIEM could observe both:
+
+- allowed/detected IDS traffic
+- blocked firewall traffic
+
+---
+
+# Final Monitoring Coverage
+
+The SIEM now receives telemetry from multiple security layers.
+
+## Endpoint
+
+- Windows
+- Linux
+- Domain Controller
+- DMZ
+
+## Host Security
+
 - Sysmon
-- Audit policy changes
+- PowerShell
+- auditd
+- Defender
+- Windows Firewall
+- File Integrity Monitoring
 
 ## Network Security
 
 - OPNsense firewall logs
 - Suricata IDS
-- Network segmentation telemetry
+
+## Application
+
+- Nginx access logs
+- Nginx error logs
+
+## Identity
+
+- Active Directory security events
+
+This produces a much richer SOC environment than the original endpoint-only lab.
 
 ---
 
-# 30. Current Operational State
+# Defense-in-Depth Visibility
 
-`LAB-SIEM-01` is currently:
+The final monitoring architecture can be represented as:
 
-    Wazuh Manager              ACTIVE
-    Wazuh Indexer              ACTIVE
-    Wazuh Dashboard            ACTIVE
-    Filebeat                   ACTIVE
-    rsyslog                    ACTIVE
-    Wazuh Agents               3 ACTIVE
-    Windows Telemetry          VERIFIED
-    Linux Telemetry            VERIFIED
-    Active Directory Telemetry VERIFIED
-    OPNsense Firewall Logs     VERIFIED
-    Suricata IDS               VERIFIED
-    Threat Hunting             OPERATIONAL
-    Detection Engineering      OPERATIONAL
+    Attacker / User Activity
+              |
+              v
+        Network Traffic
+              |
+              v
+        LAB-FW-01
+        OPNsense
+          |      |
+          |      +--> Firewall Logs
+          |
+          +--> Suricata IDS
+                    |
+                    v
+               UDP/5514
+                    |
+                    v
+             LAB-SIEM-01
+                    ^
+                    |
+    +---------------+---------------+
+    |               |               |
+    |               |               |
+LAB-WIN-01   LAB-UBUNTU-01    LAB-DC-01
+    |               |               |
+    +---------------+---------------+
+                    |
+                    |
+              LAB-DMZ-01
+                    |
+                    v
+              Wazuh Agents
 
----
-
-# 31. Active Agents
-
-Current monitored agents:
-
-    LAB-WIN-01      10.10.20.20    ACTIVE
-    LAB-UBUNTU-01   10.10.30.30    ACTIVE
-    LAB-DC-01       10.10.50.10    ACTIVE
-
-Future monitored systems will include the planned DMZ server.
-
----
-
-# 32. Security Design Decisions
-
-## Dedicated SOC Network
-
-The SIEM is isolated inside SOCNET rather than being placed with normal servers.
-
-## Explicit Firewall Rules
-
-Security zones receive only the Wazuh connectivity required for monitoring.
-
-## Management from LAB-WIN-01
-
-The dashboard is accessed from the management workstation rather than through local browsing on critical infrastructure.
-
-## Native Formats Preferred
-
-Suricata EVE JSON is used directly instead of maintaining unnecessary wrapper decoders.
-
-## Alerting and Raw Events Are Treated Separately
-
-Not every collected event becomes an alert.
-
-Troubleshooting follows:
-
-    Generate event
-    → Verify locally
-    → Verify collection
-    → Verify alert rule
-
-This prevents unnecessary configuration changes when telemetry exists but does not meet an alert condition.
+This centralizes host, network, identity, and application telemetry.
 
 ---
 
-# 33. Known Considerations
+# Final Validation Summary
 
-The following are expected and are not considered failures:
-
-- Some successful Windows authentication events may remain raw events without becoming Wazuh alerts.
-- Some PowerShell events may be collected without generating alert-level detections.
-- Sysmon requires tuning to avoid excessive noise.
-- Wazuh Threat Hunting represents detection output rather than every possible raw operating-system event.
-- SIEM storage should continue to be monitored as additional agents and telemetry sources are added.
-
----
-
-# 34. Future Work
-
-Future SIEM work will include:
-
-- DMZ endpoint monitoring
-- Additional Active Directory detection engineering
-- Kerberoasting detection
-- Password-spraying detection
-- Lateral-movement detection
-- Credential-access detections
-- Network-to-endpoint correlation
-- Threat hunting exercises
-- Incident-response simulations
-- Detection tuning
-- False-positive reduction
-- Analyst investigation workflows
+| Validation | Result |
+|---|---|
+| Wazuh Manager active | PASS |
+| Wazuh Indexer active | PASS |
+| Wazuh Dashboard active | PASS |
+| Filebeat active | PASS |
+| Windows agent active | PASS |
+| Ubuntu agent active | PASS |
+| Domain Controller agent active | PASS |
+| DMZ agent active | PASS |
+| Firewall logs → Wazuh | PASS |
+| Firewall Rule 87702 | PASS |
+| Suricata UDP/5514 listener | PASS |
+| Suricata EVE JSON ingestion | PASS |
+| Suricata Rule 86601 | PASS |
+| Linux user-add Rule 100200 | PASS |
+| Linux user-delete Rule 100201 | PASS |
+| Nginx Rule 31101 | PASS |
+| Domain Controller telemetry | PASS |
+| SIEM storage health | PASS |
+| No failed systemd services after recovery | PASS |
 
 ---
 
-# 35. Final Status
+# Snapshot History
 
-`LAB-SIEM-01` is the operational security-monitoring core of the Purple Team CyberLab.
+The SIEM accumulated multiple snapshots throughout the project because of its central role.
 
-The server currently provides centralized visibility across:
+Snapshots were especially important before:
+
+- Wazuh configuration changes
+- storage changes
+- firewall telemetry integration
+- Suricata ingestion work
+- decoder modifications
+- rsyslog configuration
+- Active Directory onboarding
+- DMZ onboarding
+
+However, after the SIEM recovery, the live recovered system became authoritative.
+
+The project explicitly avoided restoring an older SIEM snapshot.
+
+Once final six-zone validation was completed, obsolete development snapshots were removed.
+
+The remaining snapshot is:
+
+`Final-Six-Zone-Validated-Baseline`
+
+Snapshot UUID:
+
+`4081e1d5-fcb7-4f40-ad2a-04a081c865ca`
+
+---
+
+# Historical vs Current SIEM State
+
+This document intentionally preserves the full monitoring evolution.
+
+Historical phases include:
+
+- no SIEM
+- endpoint-only Wazuh monitoring
+- Windows telemetry
+- Linux telemetry
+- firewall-log integration
+- early Suricata decoder failures
+- custom Suricata decoder testing
+- JSON decoder migration
+- rsyslog UDP/5514
+- Active Directory integration
+- DMZ integration
+- SIEM storage recovery
+
+The authoritative current state is:
+
+    Hostname: LAB-SIEM-01
+    IP: 10.10.40.10
+    Zone: SOCNET
+    Wazuh Manager: v4.14.7
+    Manager: Active
+    Indexer: Active
+    Dashboard: Active
+    Filebeat: Active
+    Endpoint Agents: 4 Active
+    Suricata Ingestion: Active
+    Firewall Telemetry: Active
+    Nginx Monitoring: Active
+
+Earlier stages remain documented because they represent the actual engineering evolution of the project.
+
+---
+
+# Evolution Summary
+
+The SIEM evolved through the following maturity path:
+
+    No Central Monitoring
+          |
+          v
+    Wazuh Deployment
+          |
+          v
+    Windows Monitoring
+          |
+          v
+    Sysmon / PowerShell / Defender
+          |
+          v
+    Linux Monitoring
+          |
+          v
+    auditd / Custom Linux Rules
+          |
+          v
+    OPNsense Firewall Logs
+          |
+          v
+    Suricata IDS
+          |
+          v
+    JSON / rsyslog Integration
+          |
+          v
+    Active Directory Monitoring
+          |
+          v
+    DMZ / Nginx Monitoring
+          |
+          v
+    Full SOC Telemetry Platform
+
+---
+
+# Final Status
+
+The SIEM infrastructure phase is complete.
+
+`LAB-SIEM-01` now provides centralized monitoring for:
 
 - Windows endpoints
-- Linux endpoints
+- Linux servers
 - Active Directory
-- OPNsense firewall
+- DMZ systems
+- firewall events
 - Suricata IDS
-- PowerShell telemetry
-- Sysmon telemetry
-- Auditd telemetry
-- File Integrity Monitoring
+- Nginx web activity
 
-The SIEM is now capable of supporting realistic SOC and Purple Team activities including:
+The platform is healthy, validated, and operating as the central SOC system for the Cybersecurity Home Lab.
 
-- Detection
-- Investigation
-- Threat hunting
-- Correlation
-- Incident response
-- Detection engineering
-- Attack simulation validation
+Future work should focus on:
 
-The next major monitored security zone will be the CyberLab DMZ.
+- realistic SOC investigations
+- Purple Team attack simulations
+- detection engineering
+- alert triage
+- correlation
+- incident response
+
+rather than further baseline SIEM infrastructure changes.
