@@ -1,1736 +1,1155 @@
-# Active Directory Domain Services & Domain Controller Security Monitoring
+# Active Directory
 
-## Purple Team CyberLab
+## Overview
 
-### Project Phase
-Active Directory Infrastructure, Domain Integration, Group Policy Hardening, Wazuh Monitoring, and Sysmon Telemetry
+This document records the complete Active Directory project phase in the Cybersecurity Home Lab, from the period when the environment had no centralized identity infrastructure through the final validated `cyberlab.internal` deployment.
 
-### Status
-COMPLETED AND VERIFIED
+Active Directory was not part of the original lab.
 
----
+The earliest environment consisted mainly of:
 
-# 1. Overview
+- Kali Linux
+- Windows
+- Ubuntu Server
 
-This phase introduced a dedicated Microsoft Active Directory environment into the Purple Team CyberLab.
+on:
 
-The objective was not simply to install Active Directory Domain Services, but to build a realistic enterprise identity environment that could later support:
+`192.168.56.0/24`
 
-- Centralized authentication
-- Domain user management
-- Group-based access control
-- Group Policy enforcement
-- Kerberos authentication
-- Windows endpoint domain membership
-- Domain Controller security auditing
-- Wazuh SIEM monitoring
-- PowerShell telemetry
-- Sysmon endpoint telemetry
-- Active Directory attack detection
-- Purple Team simulations
+The Windows system operated as a standalone endpoint.
 
-The final environment provides a monitored Windows domain with a dedicated Domain Controller, a domain-joined Windows workstation, segmented firewall access, advanced Windows auditing, PowerShell monitoring, Wazuh integration, and tuned Sysmon telemetry.
+At that stage, the lab had no:
 
----
+- Domain Controller
+- centralized authentication
+- Group Policy
+- enterprise user structure
+- privileged-account separation
+- domain DNS
+- identity-focused monitoring
 
-# 2. Active Directory Network Architecture
+As the lab matured into a more realistic enterprise environment, centralized identity became necessary.
 
-The CyberLab uses segmented networks controlled by OPNsense.
+This led to the introduction of:
 
-Active Directory was placed in its own dedicated security zone.
-
-Network:
-
-ADNET: 10.10.50.0/24
-
-Domain Controller:
-
-Hostname: LAB-DC-01
-IP Address: 10.10.50.10
-Subnet Mask: 255.255.255.0
-Default Gateway: 10.10.50.1
-Role: Active Directory Domain Controller / DNS Server
-Operating System: Windows Server 2025 Standard Evaluation
-
-Domain:
-
-cyberlab.internal
-
-NetBIOS Domain:
-
-CYBERLAB
-
-The existing workstation resides in:
-
-CORPNET: 10.10.20.0/24
-
-Windows workstation:
-
-Hostname: LAB-WIN-01
-IP Address: 10.10.20.20
-
-The SIEM resides in:
-
-SOCNET: 10.10.40.0/24
-
-Wazuh server:
-
-Hostname: LAB-SIEM-01
-IP Address: 10.10.40.10
-
----
-
-# 3. Domain Controller Deployment
-
-Windows Server 2025 was deployed as:
-
-LAB-DC-01
-
-The server was assigned the static IP:
-
-10.10.50.10/24
-
-Gateway:
-
-10.10.50.1
-
-The server was configured with:
-
+- ADNET
+- Windows Server 2025
 - Active Directory Domain Services
-- DNS Server
+- DNS
+- Kerberos
+- LDAP
 - Global Catalog
-- Kerberos authentication services
-- SYSVOL
-- NETLOGON
-- Group Policy Management
+- Organizational Units
+- security groups
+- standard and privileged accounts
+- domain-joined workstation
+- Group Policy
+- advanced auditing
+- Wazuh monitoring
+- Sysmon on the Domain Controller
 
-A new Active Directory forest was created.
+The final domain is:
 
-Forest root domain:
+`cyberlab.internal`
 
-cyberlab.internal
+NetBIOS name:
 
-NetBIOS domain:
+`CYBERLAB`
 
-CYBERLAB
+Primary Domain Controller:
 
-Forest functional level:
-
-Windows Server 2025
-
-Domain functional level:
-
-Windows Server 2025
-
-The server was promoted to the first Domain Controller in the CyberLab forest.
-
-After promotion, the system was verified using:
-
-whoami
-
-Expected result:
-
-cyberlab\administrator
-
-Domain verification:
-
-%USERDNSDOMAIN%
-
-Expected result:
-
-CYBERLAB.INTERNAL
-
-Domain Controller discovery was tested using:
-
-nltest /dsgetdc:cyberlab.internal
-
-The result successfully identified:
-
-LAB-DC-01.cyberlab.internal
-
-at:
-
-10.10.50.10
-
-SYSVOL and NETLOGON shares were also verified.
-
----
-
-# 4. Domain Controller Health Verification
-
-Initial Domain Controller diagnostics were performed using:
-
-dcdiag
-
-Initial warnings were related to recently initialized DFSR/SYSVOL events and the fact that Secure Boot is disabled in the virtual machine.
-
-Focused health tests were then performed.
-
-The following tests completed successfully:
-
-Advertising
-SysVolCheck
-NetLogons
-Services
-DNS
-
-Commands used included:
-
-dcdiag /test:Advertising /test:SysVolCheck /test:NetLogons /test:Services /q
-
-and:
-
-dcdiag /test:dns /q
-
-No output from these /q tests indicated successful completion.
-
----
-
-# 5. Active Directory Organizational Unit Structure
-
-A dedicated parent Organizational Unit was created:
-
-CyberLab
-
-Inside it, the following OUs were created:
-
-CyberLab
-├── Admins
-├── Users
-├── Groups
-├── Service Accounts
-├── Servers
-└── Workstations
-
-This structure separates identities and systems by role and allows Group Policy to be targeted precisely.
-
----
-
-# 6. Active Directory Security Groups
-
-The following Global Security Groups were created under:
-
-CyberLab → Groups
-
-Groups:
-
-GG_Employees
-GG_Helpdesk
-GG_IT_Admins
-GG_SOC_Analysts
-GG_Domain_Admins
-
-Group configuration:
-
-Scope: Global
-Type: Security
-
-The GG_Domain_Admins group is currently treated as a classification group and is not automatically nested into Domain Admins.
-
-Privileged access was kept explicit rather than hidden behind unnecessary nested group membership.
-
----
-
-# 7. Domain User Accounts
-
-## Standard User
-
-A normal domain user was created under:
-
-CyberLab → Users
-
-User:
-
-Emmanuel Patrick
-
-Logon name:
-
-emmanuel.patrick
-
-UPN:
-
-emmanuel.patrick@cyberlab.internal
-
-Membership:
-
-Domain Users
-GG_Employees
-GG_SOC_Analysts
-
-This account is used for normal workstation activity.
-
-It is not a Domain Administrator.
-
----
-
-# 8. Privileged Administrative Account
-
-A separate privileged account was created under:
-
-CyberLab → Admins
-
-Display name:
-
-Emmanuel Ngari
-
-Logon name:
-
-emmanuel.ngari-adm
-
-UPN:
-
-emmanuel.ngari-adm@cyberlab.internal
-
-Membership:
-
-Domain Users
-GG_IT_Admins
-GG_Domain_Admins
-Domain Admins
-
-This account is used only when administrative elevation is required.
-
-Normal day-to-day use continues under:
-
-emmanuel.patrick
-
-This separation follows the principle of least privilege and avoids using Domain Administrator credentials for routine activities.
-
----
-
-# 9. Firewall Segmentation for Active Directory
-
-OPNsense was used to restrict traffic between CORPNET and ADNET.
-
-Rather than allowing unrestricted access between the two networks, only required Active Directory client traffic was permitted.
-
-The Domain Controller alias was created:
-
-LAB_DC_01
+`LAB-DC-01`
 
 Address:
 
-10.10.50.10
+`10.10.50.10`
 
-Active Directory TCP alias:
+Zone:
 
-AD_CLIENT_TCP
-
-Ports:
-
-53
-88
-135
-389
-445
-464
-3268
-49152:65535
-
-Active Directory UDP alias:
-
-AD_CLIENT_UDP
-
-Ports:
-
-53
-88
-123
-389
-464
-
-CORPNET rules were created allowing clients to communicate only with LAB_DC_01 on the required Active Directory ports.
-
-Rules:
-
-CORPNET - Allow AD TCP to LAB-DC-01
-CORPNET - Allow AD UDP to LAB-DC-01
-
-These rules were positioned before the broader private-network blocking rule.
-
-This prevented a broad CORPNET-to-ADNET allow rule from being introduced.
+`ADNET`
 
 ---
 
-# 10. Workstation DNS Configuration
+# Phase 1 — Before Active Directory
 
-Before joining the workstation to the domain, LAB-WIN-01 was configured to use the Domain Controller for DNS.
+The original Windows system was not domain joined.
 
-Preferred DNS:
+Authentication and system configuration were handled locally.
 
-10.10.50.10
+This was sufficient for early work involving:
 
-DNS resolution was verified using:
+- Windows administration
+- networking
+- local firewall configuration
+- Wazuh
+- Sysmon
+- PowerShell logging
 
-nslookup cyberlab.internal 10.10.50.10
+However, it did not represent how Windows systems are typically managed in an enterprise.
 
-Result:
+The environment lacked:
 
-cyberlab.internal → 10.10.50.10
-
-Domain Controller SRV records were verified using:
-
-_ldap._tcp.dc._msdcs.cyberlab.internal
-
-The query successfully returned:
-
-LAB-DC-01.cyberlab.internal
-
-Port:
-
-389
-
-IP:
-
-10.10.50.10
-
-Domain Controller discovery from the workstation was verified using:
-
-nltest /dsgetdc:cyberlab.internal
+- centralized user identity
+- centralized policy
+- domain authentication
+- enterprise account separation
+- directory monitoring
 
 ---
 
-# 11. LAB-WIN-01 Domain Join
+# Why Active Directory Was Added
 
-The workstation was successfully joined to:
+The lab needed an identity platform capable of supporting:
 
-cyberlab.internal
+- domain authentication
+- Kerberos
+- LDAP
+- centralized user management
+- Group Policy
+- workstation management
+- privileged administration
+- identity telemetry
+- future Active Directory attacks
+- Purple Team exercises
 
-Administrative credentials used:
-
-CYBERLAB\emmanuel.ngari-adm
-
-After restart, the workstation computer object was moved from the default Computers container into:
-
-CyberLab → Workstations
-
-The workstation was then restarted again so computer-targeted Group Policy could apply correctly.
-
-The normal domain user logged in successfully as:
-
-emmanuel.patrick@cyberlab.internal
-
-Identity verification:
-
-whoami
-
-Result:
-
-cyberlab\emmanuel.patrick
-
-Logon server:
-
-\\LAB-DC-01
-
-Group membership verification confirmed:
-
-GG_Employees
-GG_SOC_Analysts
+Active Directory was therefore introduced as a major infrastructure expansion.
 
 ---
 
-# 12. Workstation Rename
+# ADNET Creation
 
-The original workstation hostname was:
+A dedicated identity network was created:
 
-DESKTOP-7T1HFS1
+`ADNET`
 
-It was renamed to:
+Network:
 
-LAB-WIN-01
+`10.10.50.0/24`
 
-After restart, verification was performed using:
+Gateway:
 
-hostname
-
-Result:
-
-LAB-WIN-01
-
-Active Directory Users and Computers also automatically reflected the new computer name.
-
-The computer object remained inside:
-
-CyberLab → Workstations
-
----
-
-# 13. Domain Secure Channel Verification
-
-The workstation-domain trust relationship was verified from an elevated Command Prompt.
-
-Command:
-
-nltest /sc_verify:cyberlab.internal
-
-Result:
-
-Trusted DC Name:
-\\LAB-DC-01.cyberlab.internal
-
-Trusted DC Connection Status:
-Status = 0 0x0 NERR_Success
-
-Trust Verification Status:
-Status = 0 0x0 NERR_Success
-
-Authentication Service:
-
-Kerberos
-
-This confirmed that the workstation rename did not break the domain secure channel.
-
----
-
-# 14. Workstation Group Policy Baseline
-
-A custom Group Policy Object was created:
-
-GPO-Workstation-Security-Baseline
-
-It was linked specifically to:
-
-CyberLab → Workstations
-
-The built-in Default Domain Policy and Default Domain Controllers Policy were not modified for workstation hardening.
-
-Configured controls included:
-
-## Windows Firewall
-
-Domain Profile:
-
-Firewall: On
-Inbound: Block
-Outbound: Allow
-
-Private Profile:
-
-Firewall: On
-Inbound: Block
-Outbound: Allow
-
-Public Profile:
-
-Firewall: On
-Inbound: Block
-Outbound: Allow
-
-## Advanced Audit Policy
-
-Audit Logon:
-
-Success
-Failure
-
-Audit Process Creation:
-
-Success
-
-Audit Special Logon:
-
-Success
-
-## Process Command-Line Auditing
-
-Policy:
-
-Include command line in process creation events
-
-Status:
-
-Enabled
-
-## PowerShell Script Block Logging
-
-Policy:
-
-Turn on PowerShell Script Block Logging
-
-Status:
-
-Enabled
-
-Invocation start/stop logging was left disabled.
-
-## PowerShell Module Logging
-
-Policy:
-
-Turn on Module Logging
-
-Status:
-
-Enabled
-
-Module name:
-
-*
-
----
-
-# 15. Workstation GPO Verification
-
-Computer-side Group Policy was verified using:
-
-gpresult /scope computer /r
-
-Result:
-
-Applied Group Policy Objects:
-
-GPO-Workstation-Security-Baseline
-Default Domain Policy
-
-The workstation object was confirmed at:
-
-CN=LAB-WIN-01,OU=Workstations,OU=CyberLab,DC=cyberlab,DC=internal
-
-Policy was applied from:
-
-LAB-DC-01.cyberlab.internal
-
----
-
-# 16. Domain Controller Security Baseline GPO
-
-A separate GPO was created specifically for Domain Controllers:
-
-GPO-DomainController-Security-Baseline
-
-It was linked to:
-
-Domain Controllers OU
-
-The workstation baseline was not reused for Domain Controllers.
-
-This allowed Domain Controller monitoring to remain independent and easier to troubleshoot.
-
----
-
-# 17. Domain Controller Advanced Audit Policy
-
-The following Advanced Audit Policy settings were configured.
-
-## Account Logon
-
-Audit Kerberos Authentication Service:
-
-Success and Failure
-
-Audit Kerberos Service Ticket Operations:
-
-Success and Failure
-
-Audit Credential Validation:
-
-Success and Failure
-
-## Account Management
-
-Audit User Account Management:
-
-Success and Failure
-
-Audit Security Group Management:
-
-Success and Failure
-
-Audit Computer Account Management:
-
-Success and Failure
-
-## Directory Service Access
-
-Audit Directory Service Changes:
-
-Success
-
-## Logon/Logoff
-
-Audit Logon:
-
-Success and Failure
-
-Audit Special Logon:
-
-Success
-
-## Detailed Tracking
-
-Audit Process Creation:
-
-Success
-
-## Policy Change
-
-Audit Audit Policy Change:
-
-Success and Failure
-
----
-
-# 18. Advanced Audit Policy Enforcement
-
-The following Security Option was enabled:
-
-Audit: Force audit policy subcategory settings
-(Windows Vista or later) to override audit policy category settings
-
-This prevents legacy audit-policy settings from overriding the more precise Advanced Audit Policy subcategories.
-
----
-
-# 19. Domain Controller Process Command-Line Auditing
-
-The following policy was enabled:
-
-Computer Configuration
-→ Administrative Templates
-→ System
-→ Audit Process Creation
-→ Include command line in process creation events
-
-Status:
-
-Enabled
-
-This enriches Event ID 4688 with the actual command line used to start a process.
-
----
-
-# 20. Domain Controller PowerShell Logging
-
-The following PowerShell controls were enabled through Group Policy.
-
-Script Block Logging:
-
-Enabled
-
-Primary Event ID:
-
-4104
-
-Module Logging:
-
-Enabled
-
-Module Names:
-
-*
-
-Primary Event ID:
-
-4103
-
-This allows detailed PowerShell activity to be captured for later analysis and detection engineering.
-
----
-
-# 21. Domain Controller GPO Verification
-
-The Domain Controller baseline was applied using:
-
-gpupdate /force
-
-Computer policy and user policy both completed successfully.
-
-Effective Group Policy was verified using:
-
-gpresult /scope computer /r
-
-Applied GPOs included:
-
-Default Domain Controllers Policy
-GPO-DomainController-Security-Baseline
-Default Domain Policy
-
----
-
-# 22. Effective Audit Policy Verification
-
-The actual Windows audit configuration was verified using auditpol.
-
-Account Logon:
-
-Kerberos Service Ticket Operations:
-Success and Failure
-
-Kerberos Authentication Service:
-Success and Failure
-
-Credential Validation:
-Success and Failure
-
-Account Management:
-
-Computer Account Management:
-Success and Failure
-
-Security Group Management:
-Success and Failure
-
-User Account Management:
-Success and Failure
-
-Logon/Logoff:
-
-Logon:
-Success and Failure
-
-Special Logon:
-Success
-
-Detailed Tracking:
-
-Process Creation:
-Success
-
-Directory Service Access:
-
-Directory Service Changes:
-Success
-
-Policy Change:
-
-Audit Policy Change:
-Success and Failure
-
----
-
-# 23. Registry Verification of Logging Controls
-
-Process command-line auditing was verified using:
-
-HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
-
-Value:
-
-ProcessCreationIncludeCmdLine_Enabled = 0x1
-
-PowerShell Script Block Logging:
-
-HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
-
-Value:
-
-EnableScriptBlockLogging = 0x1
-
-PowerShell Module Logging:
-
-HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
-
-Value:
-
-EnableModuleLogging = 0x1
-
-Module logging wildcard:
-
-*
-
----
-
-# 24. Wazuh Firewall Integration for ADNET
-
-Existing OPNsense aliases were reused.
+`10.10.50.1`
 
 Domain Controller:
 
-LAB_DC_01
-10.10.50.10
+`LAB-DC-01 — 10.10.50.10`
 
-Wazuh Server:
-
-WAZUH_SERVER
-10.10.40.10
-
-Wazuh agent ports:
-
-WAZUH_AGENT_PORTS
-
-Ports:
-
-1514
-1515
-
-A dedicated ADNET firewall rule was created:
-
-ADNET - Allow LAB-DC-01 to Wazuh
-
-Source:
-
-LAB_DC_01
-
-Destination:
-
-WAZUH_SERVER
-
-Destination ports:
-
-WAZUH_AGENT_PORTS
-
-Protocol:
-
-TCP
-
-This preserved network segmentation while allowing only the required SIEM communication.
-
-Connectivity was verified from LAB-DC-01:
-
-TCP 1514: True
-TCP 1515: True
+This created a separate trust zone for identity infrastructure.
 
 ---
 
-# 25. Wazuh Agent Deployment on LAB-DC-01
+# Why ADNET Was Separate
 
-Wazuh Agent version:
+The Domain Controller was intentionally not placed in CORPNET.
 
-4.14.7
+A separate network provides:
 
-Manager:
+- stronger segmentation
+- reduced lateral-movement exposure
+- clearer firewall policy
+- dedicated identity protection
+- easier monitoring
 
-10.10.40.10
-
-Agent name:
-
-LAB-DC-01
-
-Agent group:
-
-default
-
-The agent was installed and the service verified.
-
-Service:
-
-WazuhSvc
-
-Status:
-
-Running
-
-The Wazuh dashboard confirmed:
-
-LAB-DC-01
-10.10.50.10
-Active
+The Domain Controller is treated as high-value infrastructure.
 
 ---
 
-# 26. Windows Security Event Collection
+# Windows Server Deployment
 
-The Wazuh agent successfully collected the Domain Controller Security event channel.
+The Domain Controller was deployed using:
 
-Process creation telemetry was verified using Event ID:
+`Windows Server 2025 Standard Evaluation`
 
-4688
+Final host:
 
-Wazuh successfully displayed:
+`LAB-DC-01`
 
-A process was created.
+Final address:
 
-The event contained:
+`10.10.50.10`
 
-Process executable
-Parent process
-Command line
-Account
-Domain
-Computer
-Security context
+Final gateway:
 
-Command-line auditing was therefore verified end-to-end.
+`10.10.50.1`
+
+The server used a static address because Active Directory infrastructure requires stable addressing.
 
 ---
 
-# 27. PowerShell Event Collection in Wazuh
+# Active Directory Domain Services
 
-Windows was generating PowerShell events locally, but the PowerShell Operational event channel was not included in the Wazuh agent configuration by default.
+The Active Directory Domain Services role was installed.
 
-The following block was added to:
-
-C:\Program Files (x86)\ossec-agent\ossec.conf
-
-Configuration:
-
-<localfile>
-  <location>Microsoft-Windows-PowerShell/Operational</location>
-  <log_format>eventchannel</log_format>
-</localfile>
-
-The XML configuration was validated before restart.
-
-WazuhSvc was restarted successfully.
-
-PowerShell Event ID 4104 then appeared in Wazuh Threat Hunting.
-
-Script Block Logging:
-
-4104
-Verified
-
-Module Logging:
-
-4103
-Verified locally
-
-Both use:
-
-Microsoft-Windows-PowerShell/Operational
-
-The event-channel collection path was therefore confirmed.
-
----
-
-# 28. Kerberos Authentication Monitoring
-
-Kerberos telemetry was validated using real domain activity.
-
-## Event ID 4768
-
-Description:
-
-A Kerberos authentication ticket (TGT) was requested.
-
-Verified locally on:
-
-LAB-DC-01
-
-## Event ID 4769
-
-Description:
-
-A Kerberos service ticket was requested.
-
-A service ticket was generated by accessing:
-
-\\LAB-DC-01\SYSVOL
-
-Verified successfully.
-
-## Event ID 4771
-
-Description:
-
-Kerberos pre-authentication failed.
-
-A controlled incorrect password attempt was made using:
-
-CYBERLAB\emmanuel.patrick
-
-Wazuh detected the event.
-
-Target user:
-
-emmanuel.patrick
-
-Source:
-
-10.10.20.20
-
-Status:
-
-0x18
-
-0x18 indicates Kerberos pre-authentication failure caused by an incorrect password.
-
-This confirmed the ability to identify failed domain authentication attempts.
-
----
-
-# 29. Active Directory User Lifecycle Monitoring
-
-A temporary user was created:
-
-telemetry.test
-
-Display name:
-
-Telemetry Test
-
-This produced:
-
-Event ID 4720
-
-Description:
-
-A user account was created.
-
-Wazuh detected the event and correctly identified:
-
-Target user:
-
-telemetry.test
-
-Account creator:
-
-Administrator
-
-The temporary user was later deleted.
-
-This produced:
-
-Event ID 4726
-
-Description:
-
-A user account was deleted.
-
-Wazuh successfully detected the deletion.
-
-The temporary account was removed after testing.
-
----
-
-# 30. Security Group Membership Monitoring
-
-A temporary Global Security Group was created:
-
-GG_Telemetry_Test
-
-Group type:
-
-Security
-
-Group scope:
-
-Global
-
-The normal account:
-
-emmanuel.patrick
-
-was temporarily added to the group.
-
-This generated:
-
-Event ID 4728
-
-Description:
-
-A member was added to a security-enabled global group.
-
-Wazuh successfully detected the membership addition.
-
-The account was then removed.
-
-This generated:
-
-Event ID 4729
-
-Description:
-
-A member was removed from a security-enabled global group.
-
-Wazuh successfully detected the removal.
-
-The temporary group was deleted after testing.
-
----
-
-# 31. Privileged Logon Monitoring
-
-Special Logon auditing generated:
-
-Event ID 4672
-
-Description:
-
-Special privileges assigned to new logon.
-
-Wazuh successfully detected the event for:
+The server was promoted to a Domain Controller for a new forest.
 
 Domain:
 
-CYBERLAB
+`cyberlab.internal`
 
-Account:
+NetBIOS:
 
-Administrator
+`CYBERLAB`
 
-Computer:
-
-LAB-DC-01.cyberlab.internal
-
-The event included high-value privileges related to:
-
-Backup
-Restore
-Ownership
-Debugging
-Impersonation
-Security operations
-
-This confirmed visibility into privileged logon sessions on the Domain Controller.
+Forest and domain functional levels were configured for the Windows Server 2025 environment.
 
 ---
 
-# 32. Audit Policy Change Monitoring
+# DNS Integration
 
-Audit policy changes generated:
+DNS is a core dependency of Active Directory.
 
-Event ID 4719
+`LAB-DC-01` provides DNS for:
 
-Description:
+`cyberlab.internal`
 
-System audit policy was changed.
+This allows clients to locate:
 
-Historical Event ID 4719 records were successfully confirmed on LAB-DC-01.
+- Domain Controllers
+- Kerberos services
+- LDAP
+- Global Catalog
+- domain resources
 
-This provides visibility into attempts to weaken or modify Windows auditing.
-
----
-
-# 33. Directory Service Change Monitoring
-
-Directory Service Change auditing was enabled.
-
-Event ID:
-
-5136
-
-Description:
-
-A directory service object was modified.
-
-Historical 5136 events were confirmed on LAB-DC-01.
-
-Recent temporary user/group tests did not generate new 5136 events because Directory Service Change auditing also depends on appropriate SACL configuration on the target Active Directory objects.
-
-A broad domain-wide SACL was intentionally not introduced because it would create unnecessary noise.
-
-Targeted SACL monitoring can be introduced later during dedicated Active Directory detection engineering.
+DNS therefore became one of the most important CORPNET-to-ADNET services.
 
 ---
 
-# 34. Sysmon Deployment
+# Global Catalog
 
-Microsoft Sysinternals Sysmon was deployed to LAB-DC-01.
+`LAB-DC-01` operates as a Global Catalog server.
 
-Sysmon version:
+This supports:
 
-15.22
+- directory searches
+- authentication
+- forest-wide identity lookups
 
-Configuration schema:
+The associated service includes:
 
-4.91
-
-Installation directory:
-
-C:\Tools\Sysmon
-
-Files included:
-
-Sysmon.exe
-Sysmon64.exe
-Sysmon64a.exe
-Eula.txt
-
-A Domain Controller-specific Sysmon configuration was created:
-
-C:\Tools\Sysmon\sysmon-dc.xml
-
-Sysmon was installed using:
-
-Sysmon64.exe
-
-Service:
-
-Sysmon64
-
-Status:
-
-Running
-
-Driver:
-
-SysmonDrv
-
-Status:
-
-Running
-
-Sysmon Operational log:
-
-Microsoft-Windows-Sysmon/Operational
+`TCP/3268`
 
 ---
 
-# 35. Initial Sysmon Monitoring Scope
+# Core Domain Services
 
-The initial configuration included monitoring for:
+The Active Directory environment relies on services including:
 
-Process Creation
-Network Connections
-Driver Loading
-CreateRemoteThread
-LSASS Process Access
-Script/File Creation
-Registry Persistence
-DNS Queries
-Process Tampering
+- DNS
+- Kerberos
+- LDAP
+- SMB
+- RPC
+- NTP
+- Global Catalog
 
-High-value persistence paths included:
-
-CurrentVersion\Run
-CurrentVersion\RunOnce
-SYSTEM\CurrentControlSet\Services
-
-Credential-access monitoring included process access to:
-
-lsass.exe
-
-Suspicious file types included:
-
-.ps1
-.psm1
-.bat
-.cmd
-.vbs
-.js
-.hta
+These services were incorporated into OPNsense firewall policy.
 
 ---
 
-# 36. Sysmon Wazuh Integration
+# Active Directory Firewall Design
 
-The following event channel was added to the Wazuh agent configuration:
+The project avoided a broad rule such as:
 
-<localfile>
-  <location>Microsoft-Windows-Sysmon/Operational</location>
-  <log_format>eventchannel</log_format>
-</localfile>
+`CORPNET → ADNET Any`
 
-The configuration was validated before restarting Wazuh.
+Instead, required services were explicitly permitted to the Domain Controller.
 
-Wazuh successfully began receiving Sysmon events from:
+Important TCP services include:
 
-LAB-DC-01
+- `53`
+- `88`
+- `135`
+- `389`
+- `445`
+- `464`
+- `3268`
+- `49152:65535`
 
-Sysmon Event ID 1:
+Important UDP services include:
 
-Process Create
+- `53`
+- `88`
+- `123`
+- `389`
+- `464`
 
-was successfully observed in Wazuh Threat Hunting.
-
-Wazuh also began applying rules to Sysmon process activity.
-
----
-
-# 37. Sysmon Noise Reduction
-
-The first Sysmon configuration captured every process creation event.
-
-This produced unnecessary duplication because Windows Security Event ID 4688 was already providing broad process creation visibility.
-
-Instead of keeping redundant high-volume telemetry, Sysmon was tuned to focus on higher-value executables.
-
-A backup was created before tuning:
-
-C:\Tools\Sysmon\sysmon-dc-before-tuning.xml
-
-The tuned ProcessCreate rule focuses on:
-
-powershell.exe
-pwsh.exe
-cmd.exe
-rundll32.exe
-regsvr32.exe
-mshta.exe
-certutil.exe
-bitsadmin.exe
-wscript.exe
-cscript.exe
-schtasks.exe
-nltest.exe
-ntdsutil.exe
-whoami.exe
-net.exe
-net1.exe
-
-DNS telemetry was also restricted to higher-risk interpreters and utilities including:
-
-powershell.exe
-pwsh.exe
-cmd.exe
-certutil.exe
-mshta.exe
-wscript.exe
-cscript.exe
-
-The tuning reduced duplicate process noise while preserving high-value activity.
+This supports domain functionality while preserving least privilege.
 
 ---
 
-# 38. Sysmon Tuning Verification
+# CORPNET to ADNET Validation
 
-A controlled validation was performed.
+The corporate workstation was used to test key services.
 
-Normal application:
+## DNS
 
-notepad.exe
+    Test-NetConnection 10.10.50.10 -Port 53
 
 Result:
 
-No new Sysmon Event ID 1
+    TcpTestSucceeded : True
 
-High-value command interpreter:
+Status:
 
-cmd.exe
+**PASS**
+
+---
+
+## Kerberos
+
+    Test-NetConnection 10.10.50.10 -Port 88
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+---
+
+## LDAP
+
+    Test-NetConnection 10.10.50.10 -Port 389
+
+Result:
+
+    TcpTestSucceeded : True
+
+Status:
+
+**PASS**
+
+These service checks were supplemented by successful domain join and Group Policy operation.
+
+---
+
+# Domain Validation
+
+The server was validated using:
+
+    whoami
+
+Result:
+
+`cyberlab\administrator`
+
+This confirmed the Domain Controller was operating in the new domain context.
+
+---
+
+# Domain Controller Discovery
+
+The following was tested:
+
+    nltest /dsgetdc:cyberlab.internal
+
+The command returned the Domain Controller successfully.
+
+Status:
+
+**PASS**
+
+This validated:
+
+- DNS discovery
+- domain registration
+- DC availability
+
+---
+
+# SYSVOL and NETLOGON
+
+The standard Active Directory shares were present:
+
+- `SYSVOL`
+- `NETLOGON`
+
+These are required for:
+
+- Group Policy
+- logon scripts
+- domain operations
+
+Their availability confirmed core domain functionality.
+
+---
+
+# Domain Controller Health
+
+Targeted health checks included:
+
+    dcdiag /test:Advertising /test:SysVolCheck /test:NetLogons /test:Services /q
+
+No output was returned.
+
+For `/q`, this indicated no detected failures in those tests.
+
+Additional DNS health validation also passed.
+
+Status:
+
+**PASS**
+
+---
+
+# Organizational Unit Design
+
+A structured OU hierarchy was created under:
+
+`CyberLab`
+
+Primary OUs include:
+
+- Admins
+- Users
+- Groups
+- Service Accounts
+- Servers
+- Workstations
+
+This provides logical separation and supports targeted Group Policy.
+
+---
+
+# Why OUs Were Used
+
+The OU structure allows:
+
+- workstation policy targeting
+- administrative organization
+- future delegation
+- cleaner directory management
+- role-based grouping
+
+This is more realistic than leaving objects in default containers.
+
+---
+
+# Security Groups
+
+The domain includes role-based Global Groups.
+
+Examples:
+
+- `GG_Employees`
+- `GG_Helpdesk`
+- `GG_IT_Admins`
+- `GG_SOC_Analysts`
+- `GG_Domain_Admins`
+
+The `GG_` prefix represents:
+
+`Global Group`
+
+---
+
+# GG_Domain_Admins Clarification
+
+`GG_Domain_Admins`
+
+is a custom classification group.
+
+It is not itself equivalent to the built-in:
+
+`Domain Admins`
+
+group.
+
+Actual privileged access is granted separately.
+
+This prevents confusion between:
+
+- role classification
+- real administrative privilege
+
+---
+
+# Standard User Account
+
+A standard domain account was created:
+
+`emmanuel.patrick@cyberlab.internal`
+
+Membership includes:
+
+- Domain Users
+- GG_Employees
+- GG_SOC_Analysts
+
+This account represents normal day-to-day identity.
+
+---
+
+# Privileged Administrative Account
+
+A separate privileged account was created:
+
+`emmanuel.ngari-adm@cyberlab.internal`
+
+Membership includes:
+
+- Domain Users
+- GG_IT_Admins
+- GG_Domain_Admins
+- Domain Admins
+
+This account is intended for privileged administration.
+
+---
+
+# Privileged Account Separation
+
+The lab deliberately separates:
+
+- normal user activity
+- administrative activity
+
+This supports the enterprise principle:
+
+**Do not perform everyday work using Domain Admin privileges.**
+
+This also improves future detection scenarios because privileged actions can be attributed to a dedicated account.
+
+---
+
+# Workstation Domain Join
+
+`LAB-WIN-01`
+
+was successfully joined to:
+
+`cyberlab.internal`
+
+This transformed the endpoint into a managed enterprise workstation.
+
+Successful domain join validated multiple services, including:
+
+- DNS
+- Kerberos
+- LDAP
+- SMB
+- RPC
+
+---
+
+# Workstation OU
+
+The domain-joined workstation is managed under:
+
+`CyberLab\Workstations`
+
+This allows workstation-specific policies to be applied without affecting:
+
+- servers
+- the Domain Controller
+- other infrastructure
+
+---
+
+# Group Policy Introduction
+
+A workstation security baseline was created:
+
+`GPO-Workstation-Security-Baseline`
+
+Linked to:
+
+`CyberLab\Workstations`
+
+This centralized several Windows security controls.
+
+---
+
+# Windows Firewall Policy
+
+The GPO configures Windows Firewall.
+
+Final behaviour:
+
+    Firewall: Enabled
+    Inbound: Block
+    Outbound: Allow
+
+This adds host-level protection in addition to OPNsense segmentation.
+
+---
+
+# Audit Policy
+
+The workstation baseline includes:
+
+## Logon
+
+    Success
+    Failure
+
+## Process Creation
+
+    Success
+
+## Special Logon
+
+    Success
+
+This improves security visibility.
+
+---
+
+# Command-Line Process Auditing
+
+The GPO also enables:
+
+`Include command line in process creation events`
+
+This allows analysts to see how a process was launched.
+
+This is especially useful for:
+
+- PowerShell
+- cmd
+- attacker tooling
+- administrative commands
+
+---
+
+# PowerShell Group Policy
+
+The workstation baseline enables:
+
+- Script Block Logging
+- Module Logging
+
+Module logging scope:
+
+`*`
+
+This centralizes PowerShell visibility.
+
+---
+
+# Group Policy Validation
+
+The policy successfully applied to:
+
+`LAB-WIN-01`
+
+Status:
+
+**PASS**
+
+This confirmed:
+
+- domain join
+- OU placement
+- Group Policy processing
+- domain communication
+
+---
+
+# Active Directory Auditing
+
+Security auditing on the Domain Controller was expanded to provide identity-focused telemetry.
+
+Important observed events include:
+
+- `4672`
+- `4719`
+- `5136`
+
+---
+
+# Event ID 4672
+
+Event `4672` indicates:
+
+`Special privileges assigned to new logon`
+
+This provides useful context for privileged sessions.
+
+Possible use cases include:
+
+- Domain Admin activity
+- administrator logons
+- privileged automation
+
+---
+
+# Event ID 4719
+
+Event `4719` indicates:
+
+`System audit policy was changed`
+
+This is security-relevant because attackers may attempt to weaken logging.
+
+It can help detect:
+
+- audit tampering
+- unauthorized policy changes
+- possible defense evasion
+
+---
+
+# Event ID 5136
+
+Event `5136` records:
+
+Active Directory object modification.
+
+This can help monitor:
+
+- account changes
+- group-related changes
+- directory configuration
+- identity persistence
+
+---
+
+# Wazuh Integration
+
+The Domain Controller was enrolled into Wazuh.
+
+Final agent:
+
+    ID: 003
+    Name: LAB-DC-01
+    Status: Active
+
+Destination:
+
+`LAB-SIEM-01`
+
+Address:
+
+`10.10.40.10`
+
+---
+
+# ADNET to SOCNET Validation
 
 Test:
 
-SYSMON-TUNING-TEST
+    Test-NetConnection 10.10.40.10 -Port 1514
 
 Result:
 
-Sysmon Event ID 1 generated successfully.
+    TcpTestSucceeded : True
 
-This proved that the tuned configuration successfully filtered ordinary application activity while retaining higher-value command-shell telemetry.
+Status:
 
----
+**PASS**
 
-# 39. Final Wazuh Endpoint State
-
-The Wazuh environment currently has three active monitored endpoints:
-
-LAB-WIN-01
-10.10.20.20
-Windows
-Active
-
-LAB-UBUNTU-01
-10.10.30.30
-Linux
-Active
-
-LAB-DC-01
-10.10.50.10
-Windows Server / Domain Controller
-Active
+This confirmed the Domain Controller could send telemetry to the SIEM.
 
 ---
 
-# 40. Key Verified Windows / Active Directory Events
+# Sysmon on the Domain Controller
 
-The following telemetry was verified during this phase:
+Sysmon was installed on:
 
-4103
-PowerShell Module Logging
+`LAB-DC-01`
 
-4104
-PowerShell Script Block Logging
+Version:
 
-4672
-Special privileges assigned to new logon
+`15.22`
 
-4688
-A new process has been created
+Binary:
 
-4719
-System audit policy was changed
+`C:\Tools\Sysmon\Sysmon64.exe`
 
-4720
-User account created
+Configuration:
 
-4726
-User account deleted
+`sysmon-dc.xml`
 
-4728
-Member added to security-enabled global group
-
-4729
-Member removed from security-enabled global group
-
-4768
-Kerberos authentication ticket requested
-
-4769
-Kerberos service ticket requested
-
-4771
-Kerberos pre-authentication failed
-
-5136
-Directory service object modified
-
-Sysmon 1
-Process creation
-
-Sysmon 10
-Process access
+Wazuh successfully received Sysmon telemetry.
 
 ---
 
-# 41. Security Design Decisions
+# Why Sysmon Was Added
 
-Several deliberate security decisions were made during this phase.
+The Domain Controller produces useful standard Windows security events, but Sysmon adds process-level context.
 
-## Separate Administrative Account
+This supports monitoring of:
 
-Routine user activity is performed using:
-
-emmanuel.patrick
-
-Administrative activity uses:
-
-emmanuel.ngari-adm
-
-This limits exposure of privileged credentials.
-
-## Domain Controller Is Not Used as a General Admin Workstation
-
-LAB-DC-01 is reserved for:
-
-Active Directory
-DNS
-Group Policy
-Domain Controller configuration
-Security telemetry
-
-General browsing and administration are performed from:
-
-LAB-WIN-01
-
-## No Broad CORPNET-to-ADNET Rule
-
-Only required Active Directory ports are permitted.
-
-## No Broad Domain-Wide Directory SACL
-
-Directory Service auditing can generate significant noise.
-
-Targeted SACL monitoring will be introduced only where security value justifies it.
-
-## Sysmon Is Tuned Rather Than Left in Log-Everything Mode
-
-Windows Event 4688 already provides broad process monitoring.
-
-Sysmon is used to add higher-value telemetry rather than duplicate everything.
-
-## Default Microsoft GPOs Were Not Used for Custom Hardening
-
-Custom policies were created:
-
-GPO-Workstation-Security-Baseline
-
-GPO-DomainController-Security-Baseline
-
-This improves troubleshooting, auditability, and future change control.
+- PowerShell
+- command shells
+- LOLBins
+- domain reconnaissance tools
+- suspicious administrative utilities
 
 ---
 
-# 42. Snapshots / Recovery Points
+# Sysmon Tuning
 
-Important snapshots created during this phase included:
+The initial configuration collected broader process and DNS telemetry.
 
-Pre-ADDS Baseline
+The configuration was later tuned to reduce noise.
 
-Pre-Domain-Admin-Delegation
+Important monitored executables include:
 
-Pre-AD-GPO-Baseline
+- powershell
+- pwsh
+- cmd
+- rundll32
+- regsvr32
+- mshta
+- certutil
+- bitsadmin
+- wscript
+- cscript
+- schtasks
+- nltest
+- ntdsutil
+- whoami
+- net
+- net1
 
-AD-GPO-Workstation-Baseline-Configured
-
-Pre-CORPNET-AD-Firewall-Rules
-
-Pre-CYBERLAB-Domain-Join
-
-Domain-Join-GPO-Verified
-
-AD-Domain-Joined-GPO-Verified
-
-AD-Workstation-Integration-Complete
-
-AD-DC-Security-Baseline-Verified
-
-Pre-ADNET-Wazuh-Rules
-
-Pre-DC-PowerShell-Wazuh-Collection
-
-Pre-DC-Sysmon-Deployment
-
-DC-Sysmon-Wazuh-Verified-Pre-Tuning
-
-AD-DC-Monitoring-Complete
-
-These snapshots provide rollback points before major Active Directory, Group Policy, firewall, Wazuh, and Sysmon changes.
+DNS monitoring was also focused on security-relevant processes.
 
 ---
 
-# 43. Lessons Learned
+# Why Tuning Was Important
 
-## Verify Before Changing
+A Domain Controller generates large volumes of normal activity.
 
-A missing event in Wazuh does not automatically mean the underlying Windows configuration is broken.
+Collecting every event would:
 
-For example:
+- increase noise
+- consume SIEM storage
+- make investigations harder
 
-- 4103 existed locally even when it was not visible as an alert.
-- 4768 existed locally even though normal successful Kerberos authentication did not generate a Wazuh Threat Hunting alert.
-- 5136 requires more than simply enabling the audit policy.
-
-The correct troubleshooting process is:
-
-Generate event
-→ Verify locally
-→ Verify collection
-→ Verify SIEM alerting
-
-These are separate layers.
-
-## Alerts Are Not the Same as Raw Events
-
-Wazuh Threat Hunting mainly presents events that match rules and become alerts.
-
-A valid Windows event may exist locally and may even be collected without necessarily appearing as a meaningful alert.
-
-## Domain Controllers Require Focused Telemetry
-
-Logging everything on a Domain Controller creates excessive noise.
-
-Telemetry should prioritize:
-
-Authentication
-Privilege changes
-Account lifecycle
-Group membership
-PowerShell
-Credential access
-Persistence
-High-risk process activity
-Audit-policy changes
-
-## Network Segmentation Should Be Preserved
-
-Security tooling should not be used as an excuse to create broad firewall rules.
-
-Wazuh connectivity was provided using dedicated aliases and specific ports rather than opening ADNET to SOCNET.
+The goal was to preserve high-value visibility.
 
 ---
 
-# 44. Current Active Directory Phase Status
+# REDNET Isolation
 
-Active Directory Forest:
-COMPLETE
+REDNET was not granted normal access to Active Directory.
 
-Domain Controller:
-COMPLETE
+A final test checked:
 
-DNS:
-COMPLETE
+`REDNET → ADNET LDAP/389`
 
-OU Structure:
-COMPLETE
+Result:
 
-Domain Users:
-COMPLETE
+Connection timed out.
 
-Security Groups:
-COMPLETE
+Status:
 
-Privileged Account Separation:
-COMPLETE
+**PASS**
 
-Workstation Domain Join:
-COMPLETE
-
-Workstation Rename:
-COMPLETE
-
-Kerberos Secure Channel:
-COMPLETE
-
-Workstation Security GPO:
-COMPLETE
-
-Domain Controller Security GPO:
-COMPLETE
-
-Advanced Audit Policy:
-COMPLETE
-
-PowerShell Logging:
-COMPLETE
-
-Wazuh Agent Deployment:
-COMPLETE
-
-AD Authentication Monitoring:
-COMPLETE
-
-Account Management Monitoring:
-COMPLETE
-
-Security Group Monitoring:
-COMPLETE
-
-Privileged Logon Monitoring:
-COMPLETE
-
-Audit Policy Monitoring:
-COMPLETE
-
-Sysmon Deployment:
-COMPLETE
-
-Sysmon Wazuh Integration:
-COMPLETE
-
-Sysmon Noise Tuning:
-COMPLETE
-
-Final Snapshot:
-AD-DC-Monitoring-Complete
+This confirms attacker-network isolation.
 
 ---
 
-# 45. Next Phase
+# ADNET to DMZ Isolation
 
-The next major infrastructure phase is the DMZ.
+The Domain Controller was also prevented from becoming a general-purpose administration host.
 
-Planned DMZ network:
+Test:
 
-10.10.60.0/24
+`LAB-DC-01 → LAB-DMZ-01 TCP/22`
 
-Planned gateway:
+Result:
 
-10.10.60.1
+    TcpTestSucceeded : False
 
-The DMZ phase will include:
+Status:
 
-- Dedicated OPNsense interface
-- DMZ server
-- Restricted inbound/outbound firewall policy
+**PASS**
+
+---
+
+# Why the DC Is Not a Jump Host
+
+The Domain Controller should not be used for routine administration of lower-trust systems.
+
+Doing so would:
+
+- expose privileged credentials
+- increase attack surface
+- mix identity and administration roles
+
+DMZ administration therefore occurs from:
+
+`LAB-WIN-01`
+
+instead.
+
+---
+
+# Identity Security Architecture
+
+The final identity architecture can be represented as:
+
+    LAB-WIN-01
+      CORPNET
+         |
+         | AD Services
+         v
+    LAB-FW-01
+      OPNsense
+         |
+         v
+    LAB-DC-01
+      ADNET
+         |
+         +--> AD DS
+         |
+         +--> DNS
+         |
+         +--> Kerberos
+         |
+         +--> LDAP
+         |
+         +--> Group Policy
+         |
+         +--> Windows Auditing
+         |
+         +--> Sysmon
+         |
+         v
+      Wazuh Agent
+         |
+         v
+    LAB-SIEM-01
+      SOCNET
+
+---
+
+# Security Model
+
+The Active Directory design uses multiple layers of protection.
+
+## Network Layer
+
+ADNET is separated by OPNsense.
+
+## Identity Layer
+
+Normal and privileged accounts are separated.
+
+## Policy Layer
+
+Group Policy enforces workstation security.
+
+## Endpoint Layer
+
+Windows auditing and Sysmon provide telemetry.
+
+## SOC Layer
+
+Wazuh centralizes identity events.
+
+---
+
+# Future Purple Team Use Cases
+
+The environment is now capable of supporting controlled scenarios involving:
+
+- domain reconnaissance
+- suspicious privileged logons
+- account manipulation
+- group changes
+- PowerShell abuse
+- scheduled tasks
+- credential access simulation
+- lateral movement
+- persistence
+- audit-policy tampering
+
+These scenarios can be correlated across:
+
+- Windows Security logs
+- Sysmon
+- PowerShell
+- firewall logs
+- Wazuh
+
+---
+
+# Final Validation Summary
+
+| Validation | Result |
+|---|---|
+| ADNET created | PASS |
+| Windows Server 2025 deployed | PASS |
+| AD DS installed | PASS |
+| `cyberlab.internal` created | PASS |
+| DNS active | PASS |
+| Global Catalog active | PASS |
+| SYSVOL available | PASS |
+| NETLOGON available | PASS |
+| `nltest /dsgetdc` | PASS |
+| Targeted `dcdiag` | PASS |
+| OU hierarchy created | PASS |
+| Security groups created | PASS |
+| Standard user created | PASS |
+| Privileged admin created | PASS |
+| Workstation domain join | PASS |
+| CORPNET → DNS/53 | PASS |
+| CORPNET → Kerberos/88 | PASS |
+| CORPNET → LDAP/389 | PASS |
+| Workstation GPO | PASS |
+| Advanced auditing | PASS |
+| Event 4672 observed | PASS |
+| Event 4719 observed | PASS |
+| Event 5136 observed | PASS |
+| Wazuh agent active | PASS |
+| Sysmon active | PASS |
+| Sysmon tuning | PASS |
+| REDNET → LDAP blocked | PASS |
+| ADNET → DMZ SSH blocked | PASS |
+
+---
+
+# Snapshot and Change Management
+
+Snapshots were taken before significant Active Directory changes.
+
+Major stages included:
+
+- server deployment
+- network configuration
+- AD DS promotion
+- domain creation
+- OU and group creation
+- user creation
+- firewall changes
+- workstation domain join
+- Group Policy
+- Wazuh onboarding
+- Sysmon deployment
+- Sysmon tuning
+
+After final six-zone validation, obsolete intermediate snapshots were removed.
+
+The final Domain Controller snapshot is:
+
+`Final-Six-Zone-Validated-Baseline`
+
+---
+
+# Historical vs Current State
+
+This document intentionally preserves the entire identity-security evolution.
+
+Historical state included:
+
+- standalone Windows
+- local accounts
+- no domain
+- no Group Policy
+- no ADNET
+- no Domain Controller
+
+The final authoritative state is:
+
+    Domain:
+    cyberlab.internal
+
+    NetBIOS:
+    CYBERLAB
+
+    Domain Controller:
+    LAB-DC-01
+
+    IP:
+    10.10.50.10
+
+    Zone:
+    ADNET
+
+    DNS:
+    Active
+
+    Global Catalog:
+    Active
+
+    Wazuh:
+    Active
+
+    Sysmon:
+    Active
+
+    Workstation:
+    LAB-WIN-01 joined
+
+    Group Policy:
+    GPO-Workstation-Security-Baseline
+
+---
+
+# Evolution Summary
+
+The Active Directory project evolved through:
+
+    Standalone Windows
+           |
+           v
+    Need for Central Identity
+           |
+           v
+    ADNET Creation
+           |
+           v
+    Windows Server 2025
+           |
+           v
+    AD DS / DNS
+           |
+           v
+    cyberlab.internal
+           |
+           v
+    OU Structure
+           |
+           v
+    Security Groups
+           |
+           v
+    Standard / Privileged Accounts
+           |
+           v
+    Workstation Domain Join
+           |
+           v
+    Group Policy
+           |
+           v
+    Advanced Auditing
+           |
+           v
+    Wazuh Monitoring
+           |
+           v
+    Sysmon and Tuning
+           |
+           v
+    Final Identity Security Platform
+
+---
+
+# Final Status
+
+The Active Directory infrastructure phase is complete.
+
+The lab now has a centralized identity environment providing:
+
+- domain authentication
+- DNS
+- Kerberos
+- LDAP
+- Group Policy
+- role-based user and group structure
+- privileged-account separation
+- identity auditing
 - Wazuh monitoring
-- Suricata visibility
-- Controlled exposed services
-- REDNET attack simulation
-- DMZ-to-internal segmentation testing
-- Detection validation
+- Sysmon visibility
+- firewall-enforced ADNET isolation
 
-After the DMZ is completed, the entire Purple Team CyberLab infrastructure will undergo final validation and documentation before transitioning into realistic SOC and Purple Team operational simulations.
+The identity platform is stable and ready for realistic Active Directory SOC and Purple Team exercises.
 
----
-
-# Final Result
-
-The CyberLab now contains a functioning and monitored Active Directory environment with:
-
-- Dedicated Windows Server 2025 Domain Controller
-- Segmented AD network
-- Domain DNS
-- Kerberos authentication
-- Domain-joined Windows workstation
-- Role-based user/group structure
-- Separate privileged administration
-- Workstation and Domain Controller Group Policy baselines
-- Advanced Windows auditing
-- PowerShell telemetry
-- Wazuh SIEM integration
-- Active Directory security event monitoring
-- Tuned Sysmon telemetry
-- Verified end-to-end security visibility
-
-This Active Directory environment can now support realistic attack simulations, threat hunting, incident response, detection engineering, and Purple Team exercises.
+Future work should focus on controlled identity attack simulation, alert investigation, detection engineering, threat hunting, and privilege-abuse scenarios rather than continuing to alter the baseline architecture without a specific operational requirement.
