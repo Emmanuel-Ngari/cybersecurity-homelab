@@ -1,527 +1,857 @@
-# OPNsense Security Zones
+# Security Zone Architecture
 
-## 1. Overview
+## Overview
 
-This document describes the security-zone architecture used in my cybersecurity homelab.
+The Cybersecurity Home Lab evolved from a simple flat internal network into a segmented six-zone enterprise-style architecture.
 
-The purpose of the design is to separate systems according to trust level, operational role, and security function.
+The final design uses OPNsense as the central firewall, router, segmentation boundary, and network-security enforcement point.
 
-Instead of placing every virtual machine on one flat network, OPNsense provides routing and firewall enforcement between isolated network segments.
+Each security zone represents a different trust level, system function, or security responsibility.
 
-This creates a more realistic environment for offensive security, defensive security, network monitoring, incident response, and enterprise-style access control.
+The final zones are:
 
----
-
-## 2. Security-Zone Architecture
-
-The current design contains four primary network zones:
-
-- WAN
-- CORPNET
 - REDNET
+- CORPNET
 - SERVERNET
+- SOCNET
+- ADNET
+- DMZ
 
-The architecture is:
-
-Internet  
-↓  
-VirtualBox NAT  
-↓  
-OPNsense Firewall  
-↓  
-Security Zones  
-↓  
-Controlled Inter-Zone Communication
+All inter-zone traffic must pass through `LAB-FW-01`.
 
 ---
 
-## 3. WAN Zone
+# Evolution of the Security-Zone Design
 
-**Interface:** `em0`
+## Initial Lab Design
 
-**Network:** VirtualBox NAT
+The early version of the lab used a much simpler VirtualBox network model.
 
-**IPv4 Address:** `10.0.2.15/24`
-
-**Gateway:** `10.0.2.2`
-
-### Purpose
-
-WAN represents the untrusted external network.
-
-It provides Internet connectivity to OPNsense.
-
-Internal laboratory systems will eventually access the Internet through OPNsense rather than through individual VirtualBox NAT adapters.
-
-### Security Principle
-
-Traffic originating from WAN is considered untrusted.
-
-Inbound traffic from WAN should be blocked unless explicitly permitted.
-
----
-
-## 4. CORPNET Zone
-
-**Interface:** `em1`
-
-**IPv4 Address:** `10.10.20.1/24`
-
-**Network:** `10.10.20.0/24`
-
-### Purpose
-
-CORPNET represents the trusted corporate and management network.
-
-It is intended to contain:
-
-- Windows endpoints
-- Administrative workstations
-- Management systems
-- Future domain-joined clients
-
-The current management workstation is:
-
-`10.10.20.20`
-
-### Security Role
-
-CORPNET is trusted more than REDNET but is not allowed unrestricted access to all internal networks.
-
-Access is controlled using explicit firewall policy.
-
----
-
-## 5. REDNET Zone
-
-**Interface:** `em2`
-
-**IPv4 Address:** `10.10.10.1/24`
-
-**Network:** `10.10.10.0/24`
-
-### Purpose
-
-REDNET represents the offensive-security and attacker network.
-
-It is intended to contain:
+The initial environment included:
 
 - Kali Linux
-- Penetration-testing systems
-- Red Team tools
-- Security-testing infrastructure
-
-Future Kali Linux address:
-
-`10.10.10.10`
-
-### Security Role
-
-REDNET is treated as an untrusted internal network.
-
-Systems on REDNET must not receive unrestricted access to trusted networks or firewall management interfaces.
-
----
-
-## 6. SERVERNET Zone
-
-**Interface:** `em3`
-
-**IPv4 Address:** `10.10.30.1/24`
-
-**Network:** `10.10.30.0/24`
-
-### Purpose
-
-SERVERNET represents the protected server environment.
-
-It is intended to contain:
-
+- Windows
 - Ubuntu Server
-- Linux services
-- Web applications
-- Internal services
-- Future intentionally vulnerable systems
 
-Future Ubuntu Server address:
+The systems communicated over:
 
-`10.10.30.30`
+`192.168.56.0/24`
 
-### Security Role
+Example addresses included:
 
-SERVERNET hosts systems that may be accessed by trusted administrators and controlled offensive-security systems.
+- Kali — `192.168.56.10`
+- Windows — `192.168.56.20`
+- Ubuntu — `192.168.56.30`
 
-Access is limited according to service requirements.
+Virtual machines also used VirtualBox NAT where Internet access was required.
 
----
+This design was useful for learning:
 
-## 7. Zone Trust Model
+- basic Linux administration
+- SSH
+- fail2ban
+- Nmap
+- Hydra
+- basic attacker/defender interaction
 
-The zones have different trust levels.
+However, the network was essentially flat.
 
-| Zone | Trust Level | Primary Role |
-|---|---|---|
-| WAN | Untrusted | External network |
-| REDNET | Untrusted Internal | Offensive security |
-| CORPNET | Trusted Internal | User and management systems |
-| SERVERNET | Protected Internal | Servers and services |
-
-Trust does not mean unrestricted access.
-
-Even trusted systems are subject to firewall policy.
+There was limited separation between offensive systems, endpoints, servers, monitoring infrastructure, and identity services.
 
 ---
 
-## 8. Default-Deny Philosophy
+# Why the Flat Network Was Replaced
 
-The security architecture follows a default-deny approach.
+As the project matured toward Purple Team and SOC training, the flat design became insufficient.
 
-This means:
+The major limitations were:
 
-- Traffic should be blocked unless there is a valid reason to allow it.
-- Access should be limited to required protocols.
-- Administrative services should be restricted to trusted systems.
-- Offensive systems should not automatically receive access to trusted networks.
-- Server access should be based on explicitly approved services.
+- insufficient trust separation
+- unrealistic attacker access
+- limited firewall-policy practice
+- no dedicated SOC network
+- no isolated Active Directory zone
+- no DMZ
+- limited east-west visibility
+- difficult simulation of enterprise lateral movement
+- less realistic incident-response scenarios
 
-This reduces unnecessary exposure and improves visibility.
-
----
-
-## 9. CORPNET Access Policy
-
-CORPNET is the primary trusted network.
-
-Current intended access includes:
-
-### Allowed
-
-- Windows management workstation → OPNsense HTTPS
-- CORPNET → OPNsense DNS
-- CORPNET → OPNsense NTP
-- Management workstation → SERVERNET SSH
-- Management workstation → SERVERNET HTTPS
-- CORPNET → Internet
-
-### Restricted
-
-- CORPNET → REDNET
-- CORPNET → unauthorized private networks
-- CORPNET → unauthorized firewall services
+The lab was therefore rebuilt around a segmented firewall architecture.
 
 ---
 
-## 10. REDNET Access Policy
+# Segmented Architecture
 
-REDNET is the attacker network.
+OPNsense was introduced as the central security gateway.
 
-Current intended policy includes:
+The environment was divided into purpose-built networks.
 
-### Allowed
+The initial segmented architecture included:
 
-- REDNET → Internet for updates and tool installation
-- REDNET → DNS
-- REDNET → NTP
-- REDNET → SERVERNET for controlled security testing
+- REDNET
+- CORPNET
+- SERVERNET
+- SOCNET
 
-### Restricted
+Later phases introduced:
 
-- REDNET → CORPNET
-- REDNET → OPNsense management interfaces
-- REDNET → unauthorized internal services
+- ADNET
+- DMZ
 
-This allows Kali Linux to perform authorized testing while preventing unrestricted access to the trusted management network.
-
----
-
-## 11. SERVERNET Access Policy
-
-SERVERNET contains protected servers.
-
-Current intended policy includes:
-
-### Allowed
-
-- SERVERNET → DNS
-- SERVERNET → NTP
-- SERVERNET → Internet for required updates
-- Trusted management → approved server administration services
-
-### Restricted
-
-- SERVERNET → CORPNET unsolicited connections
-- SERVERNET → REDNET unsolicited connections
-- SERVERNET → firewall management interfaces
-
-SERVERNET should not be able to initiate unnecessary connections into trusted user networks.
+This produced the final six-zone architecture.
 
 ---
 
-## 12. Firewall Management Security
+# Final Security Zones
 
-OPNsense management should only be performed from trusted systems.
-
-The current administrative workstation is:
-
-`10.10.20.20`
-
-An explicit rule allows:
-
-`10.10.20.20 → OPNsense → TCP/443`
-
-REDNET systems should not be allowed to manage the firewall.
-
-This prevents the offensive-security environment from becoming a trusted administrative zone.
+| Zone | Network | Gateway | Primary Function |
+|---|---|---|---|
+| REDNET | `10.10.10.0/24` | `10.10.10.1` | Offensive security |
+| CORPNET | `10.10.20.0/24` | `10.10.20.1` | Enterprise workstation |
+| SERVERNET | `10.10.30.0/24` | `10.10.30.1` | Internal servers |
+| SOCNET | `10.10.40.0/24` | `10.10.40.1` | SIEM and security monitoring |
+| ADNET | `10.10.50.0/24` | `10.10.50.1` | Identity infrastructure |
+| DMZ | `10.10.60.0/24` | `10.10.60.1` | Externally exposed services |
 
 ---
 
-## 13. Inter-Zone Routing
+# Trust Model
 
-OPNsense performs routing between the internal networks.
+The zones are not treated as equally trusted.
 
-Connected routes include:
+A simplified trust model is:
 
-`10.10.10.0/24 → REDNET`
+    REDNET
+      |
+      | Least trusted
+      v
 
-`10.10.20.0/24 → CORPNET`
+    DMZ
+      |
+      v
 
-`10.10.30.0/24 → SERVERNET`
+    CORPNET / SERVERNET
+      |
+      v
 
-Because OPNsense sits between these networks, firewall policy can control which traffic is permitted between zones.
+    SOCNET / ADNET
+      |
+      | Highest-value infrastructure
+      v
 
----
+This is not intended to represent a universal enterprise trust hierarchy.
 
-## 14. Internet Access Architecture
-
-The final intended Internet path is:
-
-Internal System  
-↓  
-Security Zone  
-↓  
-OPNsense  
-↓  
-WAN  
-↓  
-VirtualBox NAT  
-↓  
-Internet
-
-Examples:
-
-Kali  
-↓  
-REDNET  
-↓  
-OPNsense  
-↓  
-Internet
-
-Windows  
-↓  
-CORPNET  
-↓  
-OPNsense  
-↓  
-Internet
-
-Ubuntu  
-↓  
-SERVERNET  
-↓  
-OPNsense  
-↓  
-Internet
-
-Direct VirtualBox NAT adapters on internal systems will eventually be removed after successful migration.
+Instead, it reflects the design decisions made for this specific cybersecurity lab.
 
 ---
 
-## 15. Security Benefits of Segmentation
+# REDNET
 
-Network segmentation provides several security benefits.
+## Network
 
-### Reduced Attack Surface
+`10.10.10.0/24`
 
-Systems only communicate with networks and services that are necessary.
+## Gateway
 
-### Controlled Offensive Testing
+`10.10.10.1`
 
-Kali Linux can perform approved attacks without receiving unrestricted access to the entire environment.
+## Primary Host
 
-### Improved Monitoring
+`LAB-KALI-01 — 10.10.10.10`
 
-Traffic crossing network boundaries can be logged by OPNsense.
+## Purpose
 
-### Realistic Enterprise Architecture
+REDNET is the offensive-security network.
 
-The design resembles real environments where users, servers, security tools, and untrusted systems operate on separate networks.
+It represents:
 
-### Better Incident Analysis
+- attacker infrastructure
+- untrusted systems
+- penetration-testing activity
+- controlled adversarial simulations
 
-Security events can be associated with a specific zone and trust level.
+Kali Linux operates from this zone.
 
 ---
 
-## 16. Planned Additional Zones
+## Security Philosophy
 
-As the lab develops, additional networks may be introduced.
+REDNET should never have unrestricted access to enterprise infrastructure.
 
-### SOC-NET
+Its purpose is to generate controlled attacker activity that defensive systems can observe and investigate.
 
-Possible network:
+Allowed traffic is therefore intentionally narrow.
+
+---
+
+## Final Validated REDNET Policy
+
+    REDNET → DMZ HTTP/80       ALLOW
+    REDNET → DMZ SSH/22        BLOCK
+    REDNET → CORPNET SMB/445   BLOCK
+    REDNET → ADNET LDAP/389    BLOCK
+
+This provides an intentional attack path to the DMZ without allowing unrestricted access to protected enterprise systems.
+
+---
+
+# CORPNET
+
+## Network
+
+`10.10.20.0/24`
+
+## Gateway
+
+`10.10.20.1`
+
+## Primary Host
+
+`LAB-WIN-01 — 10.10.20.20`
+
+## Purpose
+
+CORPNET represents the enterprise user workstation environment.
+
+The Windows workstation is joined to:
+
+`cyberlab.internal`
+
+and functions as a monitored domain endpoint.
+
+---
+
+## Required Access
+
+CORPNET requires access to Active Directory services.
+
+Validated examples include:
+
+    CORPNET → ADNET DNS/53
+    CORPNET → ADNET Kerberos/88
+    CORPNET → ADNET LDAP/389
+
+These communication paths support:
+
+- DNS resolution
+- domain authentication
+- Kerberos
+- LDAP
+- Group Policy
+- domain services
+
+---
+
+## Monitoring Access
+
+CORPNET is permitted to send Wazuh telemetry to SOCNET:
+
+    CORPNET → SOCNET TCP/1514
+
+---
+
+## Administrative Access
+
+`LAB-WIN-01` also became the approved administrative workstation for DMZ management.
+
+Approved path:
+
+    LAB-WIN-01
+    10.10.20.20
+         |
+         | TCP/22
+         v
+    LAB-DMZ-01
+    10.10.60.10
+
+This rule is restricted to the approved workstation rather than all CORPNET hosts.
+
+---
+
+# SERVERNET
+
+## Network
+
+`10.10.30.0/24`
+
+## Gateway
+
+`10.10.30.1`
+
+## Primary Host
+
+`LAB-UBUNTU-01 — 10.10.30.30`
+
+## Purpose
+
+SERVERNET represents internal Linux server infrastructure.
+
+This zone is treated as a protected internal network rather than a user workstation segment.
+
+---
+
+## Monitoring
+
+The Ubuntu server sends security telemetry to Wazuh:
+
+    SERVERNET → SOCNET TCP/1514
+
+---
+
+## Isolation
+
+Validated blocked traffic includes:
+
+    SERVERNET → CORPNET SMB/445
+    SERVERNET → DMZ SSH/22
+
+These controls limit unnecessary east-west communication and reduce potential lateral-movement paths.
+
+---
+
+# SOCNET
+
+## Network
 
 `10.10.40.0/24`
 
-Purpose:
+## Gateway
 
-- SIEM
-- Wazuh
-- Monitoring infrastructure
-- Security dashboards
-- Log collectors
+`10.10.40.1`
 
-### AD-NET
+## Primary Host
 
-Possible network:
+`LAB-SIEM-01 — 10.10.40.10`
+
+## Purpose
+
+SOCNET contains the central monitoring infrastructure.
+
+`LAB-SIEM-01` hosts:
+
+- Wazuh Manager
+- Wazuh Indexer
+- Wazuh Dashboard
+- Filebeat
+- centralized Suricata event collection
+
+---
+
+## Security Role
+
+SOCNET receives telemetry from multiple trust zones.
+
+Primary endpoint flows include:
+
+    CORPNET → SOCNET
+    SERVERNET → SOCNET
+    ADNET → SOCNET
+    DMZ → SOCNET
+
+This allows the SIEM to centralize endpoint, network, identity, and application telemetry.
+
+---
+
+## Final Monitored Agents
+
+During final validation:
+
+    LAB-WIN-01       Active
+    LAB-UBUNTU-01    Active
+    LAB-DC-01        Active
+    LAB-DMZ-01       Active
+
+SOCNET therefore acts as the defensive visibility hub of the environment.
+
+---
+
+# ADNET
+
+## Network
 
 `10.10.50.0/24`
 
-Purpose:
+## Gateway
 
-- Windows Server
-- Active Directory
+`10.10.50.1`
+
+## Primary Host
+
+`LAB-DC-01 — 10.10.50.10`
+
+## Purpose
+
+ADNET contains identity infrastructure.
+
+`LAB-DC-01` provides:
+
+- Active Directory Domain Services
 - DNS
+- Kerberos
+- LDAP
 - Group Policy
-- Identity services
+- identity management
 
-### DMZ
+Domain:
 
-Possible network:
+`cyberlab.internal`
+
+---
+
+## Why ADNET Was Created
+
+The original lab did not include Active Directory.
+
+As the environment evolved toward enterprise security simulation, identity infrastructure became necessary.
+
+Placing the Domain Controller directly inside CORPNET would have reduced separation between:
+
+- user endpoints
+- authentication infrastructure
+- privileged services
+
+ADNET was therefore introduced as its own protected zone.
+
+---
+
+## Final Validated ADNET Policy
+
+Required CORPNET domain traffic is permitted.
+
+Examples:
+
+    CORPNET → ADNET DNS/53        ALLOW
+    CORPNET → ADNET Kerberos/88   ALLOW
+    CORPNET → ADNET LDAP/389      ALLOW
+
+Monitoring:
+
+    ADNET → SOCNET Wazuh/1514     ALLOW
+
+Restricted traffic:
+
+    REDNET → ADNET LDAP/389       BLOCK
+    ADNET → DMZ SSH/22            BLOCK
+
+---
+
+# DMZ
+
+## Network
 
 `10.10.60.0/24`
 
-Purpose:
+## Gateway
 
-- Public-facing services
-- Vulnerable web applications
-- Web servers
-- Security-testing targets
+`10.10.60.1`
 
-Additional zones will be introduced only when the lab resources and use cases require them.
+## Primary Host
 
----
+`LAB-DMZ-01 — 10.10.60.10`
 
-## 17. Planned Monitoring
+## Purpose
 
-OPNsense will eventually provide telemetry for:
+The DMZ was the final major security zone added to the architecture.
 
-- Allowed connections
-- Blocked connections
-- Inter-zone traffic
-- Internet access
-- Suspicious network activity
-- IDS alerts
-- IPS alerts
+It represents systems that may need to interact with untrusted networks without exposing protected enterprise infrastructure.
 
-Firewall logs may later be forwarded to:
+`LAB-DMZ-01` hosts:
 
-- Wazuh
-- SIEM infrastructure
-- Central log collectors
-
-This will allow offensive activity to be observed from the defensive side.
+- Ubuntu Server
+- Nginx
+- Wazuh Agent
 
 ---
 
-## 18. Planned IDS and IPS
+# Why the DMZ Was Added
 
-The firewall architecture is designed to support Suricata.
+The previous five-zone design lacked a realistic externally facing target.
 
-Suricata may initially operate in:
+Without a DMZ:
 
-`IDS Mode`
+- REDNET attack simulation would target internal systems directly
+- web attack scenarios were less realistic
+- Suricata validation lacked a dedicated exposed service
+- application-layer monitoring was limited
 
-to detect suspicious traffic without automatically blocking it.
-
-After testing and tuning, selected policies may move to:
-
-`IPS Mode`
-
-This will allow the lab to demonstrate:
-
-Attack  
-↓  
-Network Detection  
-↓  
-Alert  
-↓  
-Analysis  
-↓  
-Blocking  
-↓  
-Investigation
+The DMZ introduced a realistic web-service attack surface while preserving internal segmentation.
 
 ---
 
-## 19. Current Zone Status
+# DMZ Inbound Policy
 
-Current firewall zones are:
+## REDNET
 
-| Zone | Interface | Network | Status |
-|---|---|---|---|
-| WAN | `em0` | `10.0.2.0/24` | 🟢 Operational |
-| CORPNET | `em1` | `10.10.20.0/24` | 🟢 Operational |
-| REDNET | `em2` | `10.10.10.0/24` | 🟢 Configured |
-| SERVERNET | `em3` | `10.10.30.0/24` | 🟢 Configured |
+Allowed:
 
-Current management workstation:
+    REDNET → DMZ HTTP/80
 
-`Windows 11 → 10.10.20.20`
+Blocked:
 
-Future offensive workstation:
+    REDNET → DMZ SSH/22
 
-`Kali Linux → 10.10.10.10`
-
-Future Linux server:
-
-`Ubuntu Server → 10.10.30.30`
-
-The security zones are configured and ready for controlled VM migration.
+This allows offensive web testing while preventing attacker administrative access.
 
 ---
 
-## 20. Future Development
+## CORPNET
 
-The next stages of the segmented architecture include:
+Approved administrative access:
 
-- Complete CORPNET policy verification
-- Build REDNET firewall rules
-- Build SERVERNET firewall rules
-- Migrate Kali Linux to REDNET
-- Migrate Ubuntu Server to SERVERNET
-- Fully migrate Windows to CORPNET
-- Remove direct VirtualBox NAT from internal VMs
-- Test firewall-routed Internet connectivity
-- Test inter-zone access controls
-- Test blocked traffic
-- Enable detailed firewall logging
-- Deploy Suricata
-- Deploy SIEM infrastructure
-- Integrate endpoint logging
-- Create attack-and-detection exercises
-- Add Active Directory
-- Add vulnerable application targets
-- Create SOC and incident-response workflows
+    LAB-WIN-01 → LAB-DMZ-01 SSH/22
 
-The long-term objective is a professional offensive and defensive cybersecurity environment where attack traffic, defensive telemetry, firewall enforcement, detection, and incident response can all be practiced together.
+The rule is restricted using the OPNsense host alias:
+
+`ADMIN_WORKSTATION`
+
+representing:
+
+`10.10.20.20`
 
 ---
 
-## Security Disclaimer
+## ADNET
 
-This segmented cybersecurity environment is built exclusively for authorized education, experimentation, ethical hacking, defensive security, and incident-response training.
+Blocked:
 
-All offensive-security activity is restricted to systems that I own or have explicit authorization to test.
+    ADNET → DMZ SSH/22
 
-No unauthorized systems, networks, services, accounts, or organizations are targeted.
+The Domain Controller is intentionally prevented from becoming a general-purpose jump host.
+
+---
+
+# DMZ Outbound Policy
+
+Required monitoring:
+
+    DMZ → SOCNET TCP/1514
+
+Agent enrollment may use:
+
+    DMZ → SOCNET TCP/1515
+
+Protected internal access is blocked.
+
+Validated examples:
+
+    DMZ → CORPNET SMB/445   BLOCK
+    DMZ → ADNET LDAP/389    BLOCK
+
+Approved Internet access includes:
+
+- HTTP
+- HTTPS
+
+for software updates and package management.
+
+---
+
+# Default-Deny Philosophy
+
+The firewall design follows a default-deny mindset.
+
+The goal is not to permit broad communication and then block a few dangerous ports.
+
+Instead:
+
+1. broad private-network access is restricted
+2. required services are explicitly permitted
+3. specific allow rules are placed above broader deny rules
+4. significant deny boundaries are logged
+5. new exceptions are justified and validated
+
+---
+
+# Specific Allow Before Broad Deny
+
+An important design pattern used throughout OPNsense is:
+
+    Specific Allow Rule
+    Broad Private-Network Block
+
+Example:
+
+    ALLOW - REDNET to LAB-DMZ-01 HTTP
+    BLOCK - REDNET to Unauthorized Private Networks
+
+This ordering ensures approved services work without weakening broader segmentation.
+
+---
+
+# Firewall Aliases
+
+Aliases are used to improve readability and maintainability.
+
+Examples include:
+
+- `ADMIN_WORKSTATION`
+- `LAB_DMZ_01`
+- `WAZUH_SERVER`
+- `WAZUH_AGENT_PORTS`
+- `DNS_PORT`
+- `NTP_PORT`
+- `HTTP_HTTPS_PORTS`
+- `PRIVATE_NETS`
+
+Using aliases allows firewall rules to express intent clearly.
+
+Instead of:
+
+    10.10.20.20 → 10.10.60.10 TCP/22
+
+the rule can be understood as:
+
+    ADMIN_WORKSTATION → LAB_DMZ_01 SSH
+
+This is easier to maintain and review.
+
+---
+
+# Monitoring Across Security Zones
+
+Segmentation does not prevent centralized monitoring.
+
+Each monitored host is allowed to communicate with SOCNET using only the required Wazuh services.
+
+Examples:
+
+    LAB-WIN-01 → LAB-SIEM-01
+    LAB-UBUNTU-01 → LAB-SIEM-01
+    LAB-DC-01 → LAB-SIEM-01
+    LAB-DMZ-01 → LAB-SIEM-01
+
+This creates centralized visibility without broadly opening the SOC network.
+
+---
+
+# Suricata and REDNET
+
+Suricata runs on OPNsense.
+
+The REDNET-facing interface:
+
+`em2`
+
+is monitored for attacker-generated traffic.
+
+This placement allows the IDS to inspect traffic involving the Kali offensive workstation.
+
+---
+
+# REDNET-to-DMZ IDS Validation
+
+A controlled test was performed between:
+
+`LAB-KALI-01`
+
+and:
+
+`LAB-DMZ-01`
+
+A temporary HTTP response contained:
+
+    uid=0(root) gid=0(root) groups=0(root)
+
+Suricata generated:
+
+    SID 2100498
+    GPL ATTACK_RESPONSE id check returned root
+
+The event showed traffic from:
+
+    10.10.60.10:80
+
+to:
+
+    10.10.10.10
+
+This proved that Suricata had visibility into the REDNET ↔ DMZ communication path.
+
+---
+
+# Suricata to Wazuh
+
+Suricata EVE JSON telemetry is forwarded to SOCNET.
+
+The path is:
+
+    OPNsense Suricata
+        |
+        v
+    UDP/5514
+        |
+        v
+    LAB-SIEM-01
+        |
+        v
+    /var/log/suricata/eve.json
+        |
+        v
+    Wazuh
+
+The controlled IDS test generated:
+
+    Wazuh Rule 86601
+
+confirming the detection pipeline.
+
+---
+
+# DMZ Application Monitoring
+
+Network-layer IDS visibility is complemented by host-level application logging.
+
+Wazuh monitors:
+
+`/var/log/nginx/access.log`
+
+and:
+
+`/var/log/nginx/error.log`
+
+A controlled request from REDNET generated:
+
+    Wazuh Rule 31101
+    Web server 400 error code.
+
+This provides defense in depth:
+
+    Firewall
+       |
+       v
+    Suricata
+       |
+       v
+    Nginx
+       |
+       v
+    Wazuh Agent
+       |
+       v
+    SIEM
+
+---
+
+# Administrative Security
+
+Network segmentation alone is not relied upon for administrative protection.
+
+The DMZ SSH configuration was hardened with:
+
+    PermitRootLogin no
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+
+This creates two independent security layers:
+
+1. OPNsense restricts who can reach TCP/22.
+2. SSH restricts how authentication can occur.
+
+---
+
+# Final Security-Zone Validation
+
+The final zone validation produced the following results.
+
+| Source | Destination | Service | Expected | Result |
+|---|---|---|---|---|
+| REDNET | DMZ | HTTP/80 | Allow | PASS |
+| REDNET | DMZ | SSH/22 | Block | PASS |
+| REDNET | CORPNET | SMB/445 | Block | PASS |
+| REDNET | ADNET | LDAP/389 | Block | PASS |
+| CORPNET | ADNET | DNS/53 | Allow | PASS |
+| CORPNET | ADNET | Kerberos/88 | Allow | PASS |
+| CORPNET | ADNET | LDAP/389 | Allow | PASS |
+| CORPNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| LAB-WIN-01 | DMZ | SSH/22 | Allow | PASS |
+| SERVERNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| SERVERNET | CORPNET | SMB/445 | Block | PASS |
+| SERVERNET | DMZ | SSH/22 | Block | PASS |
+| ADNET | SOCNET | Wazuh/1514 | Allow | PASS |
+| ADNET | DMZ | SSH/22 | Block | PASS |
+| DMZ | SOCNET | Wazuh/1514 | Allow | PASS |
+| DMZ | CORPNET | SMB/445 | Block | PASS |
+| DMZ | ADNET | LDAP/389 | Block | PASS |
+| DMZ | Internet | HTTPS/443 | Allow | PASS |
+
+---
+
+# Final Security Model
+
+The completed environment can be summarized as:
+
+    REDNET
+    Offensive / Untrusted
+        |
+        | Controlled attack traffic
+        v
+
+    LAB-FW-01
+    OPNsense
+    Firewall + Routing + IDS
+        |
+        +------------------------------+
+        |          |         |         |
+        v          v         v         v
+    CORPNET    SERVERNET   ADNET      DMZ
+        \          |         |         /
+         \         |         |        /
+          \        |         |       /
+           +------ SOCNET -----------+
+                   |
+                   v
+                Wazuh SIEM
+
+---
+
+# Historical vs Current Architecture
+
+The repository contains documentation covering the entire lifecycle of the project.
+
+Historical configurations may include the original:
+
+`192.168.56.0/24`
+
+lab design.
+
+These should be interpreted as earlier project stages rather than current configuration.
+
+The authoritative final architecture is the six-zone model documented here.
+
+---
+
+# Snapshot Baseline
+
+Snapshots were used before major changes to firewall policy, network segmentation, Active Directory, DMZ configuration, monitoring, and hardening.
+
+After final validation, temporary build snapshots were removed.
+
+Every VM now retains:
+
+`Final-Six-Zone-Validated-Baseline`
+
+This represents the stable infrastructure state before realistic SOC and Purple Team scenarios begin.
+
+---
+
+# Final Status
+
+The security-zone architecture is complete and validated.
+
+The lab has evolved from a simple flat training network into a segmented environment with:
+
+- dedicated offensive infrastructure
+- enterprise workstation segmentation
+- protected internal servers
+- centralized SOC monitoring
+- isolated identity infrastructure
+- monitored DMZ services
+- default-deny firewall policy
+- explicit least-privilege exceptions
+- IDS visibility
+- endpoint telemetry
+- application telemetry
+- restricted administrative access
+
+Future exercises will operate within these established trust boundaries rather than modifying the underlying architecture unnecessarily.
