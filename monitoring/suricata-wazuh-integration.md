@@ -1,497 +1,1024 @@
-# Suricata IDS → Wazuh SIEM Integration
+# Suricata to Wazuh Integration
 
-## 1. Overview
+## Overview
 
-This document describes the implementation and validation of Suricata IDS monitoring within the Purple Team CyberLab.
+This document records the complete evolution of Suricata network IDS integration in the Cybersecurity Home Lab, from the period when the lab had no dedicated IDS through the final validated Suricata-to-Wazuh detection pipeline.
 
-Suricata runs on the OPNsense firewall and monitors REDNET traffic. Suricata generates EVE JSON security events, which are forwarded to LAB-SIEM-01 using a dedicated syslog collection path.
+Suricata was introduced only after the core lab had already evolved beyond the original flat environment.
 
-The events are then ingested by Wazuh for centralized detection, investigation, and threat hunting.
+The project began with:
+
+- Kali Linux
+- Windows
+- Ubuntu Server
+
+on:
+
+`192.168.56.0/24`
+
+At that stage, security testing relied mainly on:
+
+- endpoint logs
+- Nmap
+- SSH
+- Hydra
+- fail2ban
+- manual network observation
+
+There was no dedicated network IDS.
+
+As the lab matured, OPNsense was introduced, segmentation was added, Wazuh became the central SIEM, and network-level detection became the next major capability.
+
+Suricata was deployed on:
+
+`LAB-FW-01`
+
+and integrated with:
+
+`LAB-SIEM-01`
+
+The final pipeline uses:
+
+- Suricata on OPNsense
+- remote logging
+- UDP/5514
+- rsyslog
+- `/var/log/suricata/eve.json`
+- Wazuh JSON ingestion
+- built-in Suricata rules
+- centralized detection in Wazuh
 
 ---
 
-## 2. Architecture
+# Phase 1 — Before Suricata
 
-The final event pipeline is:
+The original flat lab had no IDS.
 
-LAB-KALI-01 / REDNET
-        |
-        | Network traffic
-        v
-OPNsense Firewall
-        |
-        | Suricata IDS
-        | EVE JSON
-        v
-UDP/5514
-        |
-        v
-LAB-SIEM-01
-        |
-        | rsyslog
-        v
-/var/log/suricata/eve.json
-        |
-        | Wazuh Logcollector
-        v
-JSON Decoder
-        |
-        v
-Wazuh Suricata Rules
-        |
-        v
-Wazuh Alerts / Threat Hunting Dashboard
+Security activity was observed mainly at the host level.
+
+Examples included:
+
+- Nmap output on Kali
+- SSH logs on Ubuntu
+- fail2ban bans
+- Windows local logs
+
+This provided useful endpoint visibility but little network-layer detection.
+
+The environment could answer:
+
+- Did the service respond?
+- Was the attacker blocked?
+- Did the endpoint log the activity?
+
+But it could not yet answer:
+
+- Did the network traffic match a known IDS signature?
+- Could malicious traffic be detected before or independently of endpoint logs?
+- Could the SOC correlate network and endpoint events?
+
+This created the need for Suricata.
 
 ---
 
-## 3. Relevant Network Information
+# OPNsense as the IDS Platform
 
-### REDNET
+Suricata was installed on:
+
+`LAB-FW-01`
+
+rather than on a separate sensor.
+
+This allowed the firewall to provide both:
+
+- traffic enforcement
+- network detection
+
+The design simplified the lab while still providing realistic IDS visibility.
+
+---
+
+# Why Suricata Was Added to OPNsense
+
+The objectives included:
+
+- detect known attack patterns
+- inspect REDNET traffic
+- generate EVE JSON
+- centralize IDS telemetry in Wazuh
+- support Purple Team validation
+- correlate network alerts with endpoint events
+
+This expanded the defensive architecture beyond firewall allow/block decisions.
+
+---
+
+# Monitored Interface
+
+Suricata was configured on:
+
+`em2`
+
+This interface corresponds to:
+
+`REDNET`
 
 Network:
 
-10.10.10.0/24
+`10.10.10.0/24`
 
-Test endpoint:
+Primary attacker host:
 
-LAB-KALI-01
-10.10.10.10
+`LAB-KALI-01 — 10.10.10.10`
 
-Purpose:
-
-Controlled offensive security and attack simulation network.
-
-### SOCNET
-
-Network:
-
-10.10.40.0/24
-
-OPNsense SOCNET interface:
-
-10.10.40.1
-
-Wazuh SIEM:
-
-LAB-SIEM-01
-10.10.40.10
+This placement was intentional because REDNET generates controlled offensive traffic.
 
 ---
 
-## 4. Suricata Configuration
+# Why REDNET Was Selected
 
-Suricata IDS is installed on OPNsense.
+Monitoring REDNET provided high-value visibility into:
 
-The monitored network/interface corresponds to REDNET.
+- reconnaissance
+- attack simulation
+- web testing
+- suspicious responses
+- controlled Purple Team traffic
 
-ET Open rules are installed and enabled.
-
-Suricata EVE JSON output is enabled.
-
-Remote Suricata logging is configured with:
-
-Application:
-
-suricata
-
-Severity:
-
-info
-
-Transport:
-
-UDP
-
-Destination:
-
-10.10.40.10
-
-Port:
-
-5514
-
-UDP/5514 is dedicated specifically to Suricata telemetry.
-
-Existing OPNsense firewall logging remains independent from the Suricata collection path.
+It also avoided unnecessary collection from every interface during the initial IDS deployment.
 
 ---
 
-## 5. LAB-SIEM-01 Remote Collector
+# Ruleset
 
-LAB-SIEM-01 uses rsyslog to receive Suricata events on UDP/5514.
+Suricata used:
 
-Collector configuration:
+`ET Open`
 
-/etc/rsyslog.d/30-suricata-remote.conf
+rules.
 
-Configuration:
-
-module(load="imudp")
-
-template(name="SuricataEVE" type="string" string="%msg%\n")
-
-ruleset(name="suricata5514") {
-    action(
-        type="omfile"
-        file="/var/log/suricata/eve.json"
-        template="SuricataEVE"
-        fileOwner="syslog"
-        fileGroup="wazuh"
-        fileCreateMode="0640"
-    )
-    stop
-}
-
-input(
-    type="imudp"
-    port="5514"
-    ruleset="suricata5514"
-)
-
-The configuration was validated using:
-
-sudo rsyslogd -N1
-
-UDP/5514 listener verification:
-
-sudo ss -lunp | grep ':5514'
-
-rsyslog successfully listens on:
-
-0.0.0.0:5514
-
-and
-
-[::]:5514
+This provided a broad community IDS ruleset for detecting known suspicious patterns.
 
 ---
 
-## 6. Wazuh Collection
+# Initial Suricata Validation
 
-Wazuh monitors the Suricata EVE JSON file directly.
+A controlled test generated a known alert.
 
-The following localfile configuration was added to:
+The event contained:
 
-/var/ossec/etc/ossec.conf
+    Signature ID: 2100498
+    Signature: GPL ATTACK_RESPONSE id check returned root
+    Category: Potentially Bad Traffic
+    Severity: 2
 
-Configuration:
+This confirmed that Suricata itself was functioning.
 
-<ossec_config>
-  <localfile>
-    <log_format>json</log_format>
-    <location>/var/log/suricata/eve.json</location>
-  </localfile>
-</ossec_config>
-
-Configuration validation was performed using:
-
-sudo /var/ossec/bin/wazuh-logcollector -t
-
-The configuration passed validation successfully.
-
-The Wazuh manager was then restarted.
+The next challenge was integrating that alert into Wazuh correctly.
 
 ---
 
-## 7. Detection Validation
+# First Wazuh Ingestion Attempt
 
-A controlled Suricata detection test was performed from LAB-KALI-01 using:
+Suricata telemetry was forwarded toward the SIEM.
 
-curl http://testmyids.com
+The event reached Wazuh, but decoding was initially incorrect.
 
-The HTTP response contained:
+The event fell through to:
 
-uid=0(root) gid=0(root) groups=0(root)
+`Rule 1002`
 
-Suricata generated the expected alert:
-
-Signature ID:
-
-2100498
-
-Signature:
-
-GPL ATTACK_RESPONSE id check returned root
-
-Category:
-
-Potentially Bad Traffic
-
-Severity:
-
-2
-
-Example event characteristics:
-
-event_type:
-
-alert
-
-Source:
-
-217.160.0.187:80
-
-Destination:
-
-10.10.10.10
-
-Protocol:
-
-TCP
-
-Application protocol:
-
-HTTP
-
-Direction:
-
-to_client
-
-Monitored interface:
-
-em2
+This indicated that Wazuh had received data, but the event structure was not being parsed in the intended way.
 
 ---
 
-## 8. Wazuh Detection
+# Why Rule 1002 Was Important
 
-The EVE JSON event was successfully decoded using Wazuh's built-in JSON decoder.
+The fallback rule was actually useful for troubleshooting.
 
-The event matched the built-in Suricata rule chain.
+It showed that:
 
-Generated Wazuh alert:
+- traffic reached the SIEM
+- Wazuh saw the event
+- transport was functioning
 
-Rule ID:
+The problem was therefore not complete network failure.
 
-86601
+The issue was:
 
-Level:
+- decoding
+- message format
+- parsing
 
-3
+This helped narrow the investigation.
+
+---
+
+# Initial Decoder Troubleshooting
+
+The project investigated:
+
+- Suricata EVE output
+- OPNsense remote logging format
+- Wazuh decoders
+- syslog wrapping
+- JSON fields
+- test events
+
+The objective was to determine how the Suricata event actually arrived at the manager.
+
+---
+
+# Custom Decoder Phase
+
+A custom Suricata decoder was introduced during troubleshooting.
+
+One observed decoder name was:
+
+`suricata-eve-syslog`
+
+This allowed the event to be matched more specifically.
+
+The custom decoder helped prove that the event structure could be recognized.
+
+However, this was not the final design.
+
+---
+
+# Why the Custom Decoder Was Not Retained
+
+The custom wrapper introduced additional complexity.
+
+Once it became clear that the Suricata payload could be handled as structured JSON, maintaining a custom wrapper was unnecessary.
+
+A simpler solution was preferred.
+
+This followed the project principle:
+
+**Use built-in, maintainable functionality where it works reliably.**
+
+---
+
+# Transition to JSON Parsing
+
+The Suricata event path was simplified so Wazuh could use the built-in:
+
+`json`
+
+decoder.
+
+This improved:
+
+- maintainability
+- field extraction
+- rule compatibility
+- troubleshooting
+
+The effective decoder later observed was:
+
+`json`
+
+---
+
+# Built-In Suricata Rules
+
+Once the event was parsed as JSON, Wazuh's built-in Suricata rules could process the alert.
+
+Relevant ruleset file:
+
+`0475-suricata_rules.xml`
+
+The controlled test generated:
+
+`Rule 86601`
 
 Description:
 
-Suricata: Alert - GPL ATTACK_RESPONSE id check returned root
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
 
-Groups:
-
-ids
-suricata
-
-Decoder:
-
-json
-
-Event source:
-
-/var/log/suricata/eve.json
-
-The alert was successfully written to:
-
-/var/ossec/logs/alerts/alerts.json
+This confirmed the built-in ruleset worked.
 
 ---
 
-## 9. Dashboard Verification
+# Transport Architecture Evolution
 
-The alert was successfully verified in the Wazuh Threat Hunting interface.
+The Suricata integration went through several stages.
 
-Search:
+The final transport architecture uses a dedicated syslog port.
 
-rule.id:86601
+Protocol:
 
-The dashboard displayed multiple controlled test detections.
+`UDP`
 
-Relevant fields included:
+Port:
 
-agent.name = lab-siem-01
+`5514`
 
-data.event_type = alert
+Destination:
 
-data.alert.signature_id = 2100498
+`LAB-SIEM-01 — 10.10.40.10`
 
-data.alert.signature = GPL ATTACK_RESPONSE id check returned root
-
-data.alert.category = Potentially Bad Traffic
-
-data.dest_ip = 10.10.10.10
-
-data.proto = TCP
-
-The dashboard therefore confirmed successful end-to-end indexing and visualization.
+This separated Suricata traffic from other syslog sources.
 
 ---
 
-## 10. Detection Pipeline Validation
+# Why UDP/5514 Was Used
 
-The following stages were individually verified:
+A dedicated port simplified:
 
-1. Kali generated controlled HTTP traffic.
+- traffic identification
+- rsyslog filtering
+- troubleshooting
+- log separation
 
-2. Suricata inspected REDNET traffic.
-
-3. Suricata detected SID 2100498.
-
-4. EVE JSON was generated locally on OPNsense.
-
-5. OPNsense transmitted Suricata events to:
-
-   10.10.40.10:5514/UDP
-
-6. LAB-SIEM-01 received UDP/5514 traffic.
-
-7. rsyslog wrote the event to:
-
-   /var/log/suricata/eve.json
-
-8. Wazuh Logcollector read the JSON file.
-
-9. Wazuh JSON decoder parsed the Suricata fields.
-
-10. Built-in Wazuh rule 86601 generated an alert.
-
-11. The event appeared in alerts.json.
-
-12. The event appeared in the Wazuh Threat Hunting dashboard.
-
-The Suricata → Wazuh integration is therefore considered operational.
+It also avoided mixing IDS telemetry with the existing firewall syslog path.
 
 ---
 
-## 11. Troubleshooting Lessons Learned
+# SIEM rsyslog Listener
 
-An initial architecture attempted to send Suricata EVE JSON directly to Wazuh's remote syslog listener on UDP/514.
+The SIEM uses rsyslog to receive Suricata events.
 
-Network packet captures proved that the Suricata syslog packets reached LAB-SIEM-01.
+Configuration file:
 
-However, the events arrived with a traditional syslog wrapper surrounding the EVE JSON.
+`/etc/rsyslog.d/30-suricata-remote.conf`
 
-Example structure:
+The configuration uses:
 
-<PRI>timestamp hostname suricata[PID]: {EVE JSON}
+`imudp`
 
-Wazuh's JSON decoder successfully decoded the raw EVE JSON but did not automatically decode the JSON when it was embedded inside this syslog wrapper.
+on port:
 
-Custom decoder testing confirmed that the underlying JSON and built-in Suricata rule set were functioning correctly.
-
-A dedicated rsyslog collection architecture was therefore implemented.
-
-The final architecture provides several advantages:
-
-- Preserves raw IDS telemetry.
-- Separates Suricata IDS logging from general firewall logging.
-- Simplifies troubleshooting.
-- Allows log replay and forensic review.
-- Allows Wazuh to consume native JSON directly.
-- Avoids unnecessary custom decoding rules.
-- Uses Wazuh's existing Suricata detection rules.
-
-A temporary Suricata syslog wrapper decoder created during troubleshooting was retired after the final architecture was validated.
-
-The final environment therefore relies on Wazuh's built-in JSON decoder and Suricata rules rather than unnecessary custom parsing.
+`5514`
 
 ---
 
-## 12. Suricata Tuning Review
+# Suricata Log Destination
 
-An initial alert-frequency review was performed using:
+Incoming Suricata events are written to:
 
-sudo grep -E '^[[:space:]]*\{' /var/log/suricata/eve.json | \
-jq -r 'select(.event_type=="alert") |
-"\(.alert.signature_id)\t\(.alert.signature)"' | \
-sort | uniq -c | sort -nr | head -20
+`/var/log/suricata/eve.json`
 
-Observed result:
-
-6 2100498 GPL ATTACK_RESPONSE id check returned root
-
-All observed alerts were generated intentionally during integration testing.
-
-No unrelated noisy signatures were observed.
-
-Therefore:
-
-No suppression rules were implemented.
-
-No thresholding was implemented.
-
-No Suricata signatures were disabled.
-
-This decision preserves detection capability until sufficient real telemetry exists to justify tuning.
-
-Future IDS tuning will be performed during Purple Team simulations using evidence such as alert frequency, false-positive rate, asset relevance, and detection value.
+This provides a dedicated local file for Wazuh ingestion.
 
 ---
 
-## 13. Operational Status
+# Directory Creation
 
-Suricata IDS:
+The directory:
 
-OPERATIONAL
+`/var/log/suricata`
 
-EVE JSON:
+was created before events were written.
 
-OPERATIONAL
+Final ownership:
 
-OPNsense → SIEM forwarding:
+`syslog:wazuh`
 
-OPERATIONAL
+Permissions:
 
-rsyslog collector:
+`750`
 
-OPERATIONAL
+This design ensures:
 
-Wazuh JSON ingestion:
-
-OPERATIONAL
-
-Wazuh Suricata rules:
-
-OPERATIONAL
-
-Threat Hunting dashboard:
-
-OPERATIONAL
-
-Test SID 2100498:
-
-VERIFIED
-
-Suricata → Wazuh integration:
-
-COMPLETE
+- rsyslog can write
+- Wazuh can read
+- unnecessary users cannot access the directory
 
 ---
 
-## 14. Next Phase
+# rsyslog Listener Validation
 
-The next CyberLab implementation phase is Linux endpoint monitoring.
+The SIEM was verified listening on:
 
-Planned work includes:
+`0.0.0.0:5514`
 
-- Linux Wazuh agent deployment
-- SSH monitoring
-- Authentication monitoring
-- sudo activity
-- Auditd
-- File Integrity Monitoring
-- Service and system monitoring
-- Linux attack simulation
-- Detection verification
-- Dashboard investigation
-- Documentation
+and:
 
-After Linux monitoring, the infrastructure roadmap continues with:
+`[::]:5514`
 
-1. Active Directory
+This proved that the network receiver was active.
 
-   AD-NET
-   10.10.50.0/24
+---
 
-2. DMZ
+# Why Listener Validation Came First
 
-   10.10.60.0/24
+Before troubleshooting Wazuh decoding, the project verified the lower layers.
 
-3. Final infrastructure validation
+The sequence was:
 
-4. Transition from build tutorials to realistic SOC and Purple Team operational simulations
+    Is port 5514 listening?
+          |
+          v
+    Is traffic arriving?
+          |
+          v
+    Is the file being written?
+          |
+          v
+    Is Wazuh reading the file?
+          |
+          v
+    Is decoding correct?
+          |
+          v
+    Does the rule fire?
+
+This layered approach reduced unnecessary changes.
+
+---
+
+# OPNsense Remote Logging
+
+OPNsense was configured to forward Suricata events to:
+
+`10.10.40.10`
+
+using:
+
+`UDP/5514`
+
+This created the network path:
+
+    LAB-FW-01
+        |
+        v
+    LAB-SIEM-01
+
+---
+
+# Suricata Event Reception
+
+Once forwarding was enabled, events began reaching:
+
+`/var/log/suricata/eve.json`
+
+This confirmed the transport path.
+
+At this point, the remaining work focused on Wazuh ingestion and decoding.
+
+---
+
+# Wazuh Localfile Configuration
+
+Wazuh was configured to monitor:
+
+`/var/log/suricata/eve.json`
+
+using:
+
+`log_format`
+
+set to:
+
+`json`
+
+This allowed the logcollector to process the file as structured JSON.
+
+---
+
+# Logcollector Validation
+
+Wazuh logcollector reported that it was analyzing:
+
+`/var/log/suricata/eve.json`
+
+This confirmed that the file was successfully registered for ingestion.
+
+---
+
+# Decoder Validation
+
+After the localfile configuration was corrected, Wazuh successfully parsed the Suricata event.
+
+The effective decoder became:
+
+`json`
+
+This allowed fields such as:
+
+- signature ID
+- source IP
+- destination IP
+- category
+- severity
+
+to be available to Wazuh rules.
+
+---
+
+# Controlled Signature Validation
+
+The known controlled alert:
+
+`SID 2100498`
+
+was used repeatedly because it provided a predictable validation condition.
+
+Signature:
+
+`GPL ATTACK_RESPONSE id check returned root`
+
+Category:
+
+`Potentially Bad Traffic`
+
+Severity:
+
+`2`
+
+This became the primary test for confirming the complete pipeline.
+
+---
+
+# REDNET to DMZ Test
+
+The final validation used:
+
+`LAB-KALI-01`
+
+in:
+
+`REDNET`
+
+and:
+
+`LAB-DMZ-01`
+
+in:
+
+`DMZ`
+
+A temporary file was created on the DMZ web server containing:
+
+    uid=0(root) gid=0(root) groups=0(root)
+
+Kali requested the file over HTTP.
+
+---
+
+# Why This Test Was Chosen
+
+The response matched the known Suricata signature.
+
+The test was:
+
+- controlled
+- harmless
+- repeatable
+- easy to remove afterward
+
+It allowed the entire IDS pipeline to be tested without relying on actual malware.
+
+---
+
+# Suricata Alert Details
+
+The final observed Suricata event included:
+
+    Source IP: 10.10.60.10
+    Source Port: 80
+
+    Destination IP: 10.10.10.10
+
+    Signature ID: 2100498
+
+    Signature:
+    GPL ATTACK_RESPONSE id check returned root
+
+    Category:
+    Potentially Bad Traffic
+
+    Severity:
+    2
+
+    Direction:
+    to_client
+
+Interface:
+
+`em2`
+
+---
+
+# Understanding the Traffic Direction
+
+Although Kali initiated the HTTP request, the signature matched the response from the DMZ server.
+
+This explains why the alert showed:
+
+    Source:
+    10.10.60.10:80
+
+    Destination:
+    10.10.10.10
+
+Direction:
+
+`to_client`
+
+This is an important analytical detail.
+
+The alert source does not always represent the original initiator of the session.
+
+---
+
+# Wazuh Detection
+
+The same event reached Wazuh.
+
+Rule:
+
+`86601`
+
+Description:
+
+`Suricata: Alert - GPL ATTACK_RESPONSE id check returned root`
+
+Status:
+
+**PASS**
+
+This confirmed that the final integration worked end to end.
+
+---
+
+# Final Detection Path
+
+The final Suricata detection pipeline is:
+
+    LAB-KALI-01
+    10.10.10.10
+          |
+          v
+      LAB-FW-01
+       OPNsense
+          |
+          v
+       Suricata
+          |
+          v
+     LAB-DMZ-01
+    10.10.60.10
+          |
+          v
+    Suricata Alert
+          |
+          v
+    OPNsense Remote Logging
+          |
+          | UDP/5514
+          v
+     LAB-SIEM-01
+          |
+          v
+        rsyslog
+          |
+          v
+    /var/log/suricata/eve.json
+          |
+          v
+     Wazuh Logcollector
+          |
+          v
+       JSON Decoder
+          |
+          v
+      Rule 86601
+
+---
+
+# full_log Behaviour
+
+During investigation, the Suricata Wazuh event showed:
+
+`full_log: null`
+
+This initially looked unusual.
+
+However, the structured JSON fields were still present.
+
+The event could be searched and investigated using:
+
+- rule ID
+- location
+- structured fields
+
+This showed that:
+
+**An empty full_log field does not automatically mean the event is invalid.**
+
+---
+
+# Better Suricata Searches
+
+For structured Suricata events, useful search criteria include:
+
+- `rule.id:86601`
+- location
+- source IP
+- destination IP
+- signature ID
+- signature text
+
+These can be more reliable than searching only the raw log field.
+
+---
+
+# Live File jq Parsing Issue
+
+Direct use of:
+
+`jq`
+
+against the actively written:
+
+`/var/log/suricata/eve.json`
+
+occasionally produced parse errors.
+
+This could occur because:
+
+- the file was being written live
+- a partial record was read
+- a malformed/partial line existed
+
+The presence of valid Wazuh alerts proved the full pipeline was still working.
+
+---
+
+# Why the Pipeline Was Not Rebuilt
+
+The project avoided unnecessary reconfiguration because:
+
+- rsyslog was receiving data
+- the file was being written
+- Wazuh was analyzing the file
+- Rule 86601 was firing
+
+A single `jq` parse error therefore did not justify rebuilding a working architecture.
+
+This reinforced:
+
+**Use end-to-end evidence before making major changes.**
+
+---
+
+# Decoder Testing Lessons
+
+The Suricata integration produced several important lessons.
+
+## Arrival Does Not Mean Parsing
+
+Rule 1002 proved that an event can arrive without being decoded correctly.
+
+## Decoder Matching Matters
+
+Wazuh needs the correct structure before rules can work reliably.
+
+## Structured JSON Is Preferable
+
+Where available, JSON simplifies field extraction.
+
+## Built-In Rules Should Be Preferred
+
+Custom wrappers should not be retained without a need.
+
+---
+
+# Transport Troubleshooting Lessons
+
+The final troubleshooting model became:
+
+    1. Confirm OPNsense generated an alert
+    2. Confirm remote logging target
+    3. Confirm UDP/5514 listener
+    4. Confirm rsyslog receives traffic
+    5. Confirm eve.json grows
+    6. Confirm Wazuh logcollector monitors the file
+    7. Confirm decoder
+    8. Confirm rule
+    9. Generate fresh test traffic
+
+This provides a repeatable method for future integrations.
+
+---
+
+# Suricata and Firewall Relationship
+
+Suricata and OPNsense firewall rules serve different purposes.
+
+## Firewall
+
+Determines whether traffic is allowed or blocked.
+
+## Suricata
+
+Inspects traffic and identifies suspicious patterns.
+
+This means allowed traffic can still generate an alert.
+
+The REDNET-to-DMZ HTTP path is a good example.
+
+The firewall allowed:
+
+`TCP/80`
+
+while Suricata still detected suspicious content.
+
+---
+
+# Suricata and Nginx Correlation
+
+The same REDNET-to-DMZ path is also monitored at the application layer.
+
+This allows multiple views of one interaction.
+
+Example:
+
+    Kali HTTP Request
+          |
+          v
+    OPNsense Firewall
+          |
+          v
+    Suricata
+          |
+          v
+    Nginx
+          |
+          v
+    Wazuh Agent
+
+This supports richer Purple Team investigations.
+
+---
+
+# Network and Application Evidence
+
+For a web scenario, Wazuh may eventually contain:
+
+- firewall event
+- Suricata event
+- Nginx access event
+- Linux host event
+
+This multi-layer visibility is more useful than relying on a single sensor.
+
+---
+
+# Current Suricata Role
+
+Suricata now functions as the lab's network intrusion detection layer.
+
+Its role includes:
+
+- REDNET traffic visibility
+- signature detection
+- EVE JSON generation
+- Wazuh integration
+- attack-response validation
+- future Purple Team network detections
+
+---
+
+# Final Validation Summary
+
+| Validation | Result |
+|---|---|
+| Suricata installed on OPNsense | PASS |
+| Monitored interface `em2` | PASS |
+| ET Open rules active | PASS |
+| SID 2100498 generated | PASS |
+| Initial Rule 1002 fallback observed | PASS |
+| Custom decoder testing completed | PASS |
+| JSON decoder working | PASS |
+| UDP/5514 listener active | PASS |
+| rsyslog receiving Suricata events | PASS |
+| `/var/log/suricata/eve.json` writing | PASS |
+| Wazuh localfile configured | PASS |
+| Wazuh logcollector analyzing file | PASS |
+| Rule 86601 generated | PASS |
+| REDNET-to-DMZ visibility | PASS |
+| Wazuh alert correlation | PASS |
+
+---
+
+# Historical vs Current State
+
+This document intentionally preserves the complete Suricata integration journey.
+
+Historical stages include:
+
+- no IDS
+- endpoint-only monitoring
+- Suricata installation
+- first local alert
+- initial Wazuh fallback Rule 1002
+- custom decoder experimentation
+- syslog wrapper parsing
+- transition to JSON
+- dedicated UDP/5514
+- rsyslog file ingestion
+- final Wazuh built-in rule processing
+
+The authoritative current architecture is:
+
+    Sensor:
+    LAB-FW-01 / Suricata
+
+    Interface:
+    em2 / REDNET
+
+    Remote Destination:
+    10.10.40.10
+
+    Transport:
+    UDP/5514
+
+    Receiver:
+    rsyslog
+
+    File:
+    /var/log/suricata/eve.json
+
+    Wazuh Format:
+    json
+
+    Validated Wazuh Rule:
+    86601
+
+---
+
+# Evolution Summary
+
+The Suricata integration evolved through:
+
+    No IDS
+       |
+       v
+    OPNsense Suricata Installation
+       |
+       v
+    REDNET Monitoring
+       |
+       v
+    First Suricata Alert
+       |
+       v
+    Wazuh Rule 1002 Fallback
+       |
+       v
+    Decoder Troubleshooting
+       |
+       v
+    Custom Decoder
+       |
+       v
+    JSON Parsing
+       |
+       v
+    Dedicated UDP/5514
+       |
+       v
+    rsyslog
+       |
+       v
+    eve.json
+       |
+       v
+    Wazuh Rule 86601
+       |
+       v
+    Final REDNET-to-DMZ IDS Pipeline
+
+---
+
+# Final Status
+
+The Suricata-to-Wazuh integration is complete.
+
+The final environment provides:
+
+- network IDS visibility
+- REDNET monitoring
+- EVE JSON telemetry
+- dedicated Suricata transport
+- centralized SIEM ingestion
+- structured JSON parsing
+- built-in Wazuh Suricata detection
+- validated REDNET-to-DMZ visibility
+
+The integration is now considered stable baseline infrastructure.
+
+Future work should focus on:
+
+- controlled attack simulations
+- additional IDS signatures
+- alert triage
+- false-positive tuning
+- correlation with endpoint logs
+- MITRE ATT&CK mapping
+- Purple Team detection validation
+
+rather than rebuilding the underlying Suricata transport or parser architecture without a specific operational reason.
